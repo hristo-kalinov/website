@@ -1,0 +1,207 @@
+import React, { useState } from 'react';
+import { AuthenticatedLayout } from './Dashboard';
+import { Search, Sliders, Star, Check } from 'lucide-react';
+
+const subjects = [
+  'Математика',
+  'Български език',
+  'Английски език',
+  'История',
+  'География',
+  'Биология',
+  'Химия',
+  'Физика',
+  'Информатика',
+  'Немски език',
+  'Френски език',
+  'Испански език',
+  'Италиански език',
+  'Руски език',
+  'Литература',
+  'Философия',
+  'Психология',
+  'Музика',
+  'Изобразително изкуство',
+  'Програмиране',
+  'Web дизайн',
+  'Счетоводство',
+  'Икономика',
+  'Статистика'
+];
+
+const tutors = [
+  {
+    id: 1,
+    name: 'Мария Петрова',
+    subject: 'Математика',
+    rating: 4.8,
+    price: 50,
+    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+    description: 'Преподавател с 10 години опит в подготовката за матура и кандидатстудентски изпити.',
+  },
+  {
+    id: 2,
+    name: 'Георги Димитров',
+    subject: 'Английски език',
+    rating: 4.9,
+    price: 45,
+    image: 'https://images.unsplash.com/photo-1519345182560-3f2917c472ef?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+    description: 'Сертифициран преподавател по английски език с фокус върху разговорната реч.',
+  },
+];
+
+function TutorSearch() {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [priceRange, setPriceRange] = useState(100);
+  const [minRating, setMinRating] = useState(4);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+
+  return (
+    <AuthenticatedLayout>
+      <div className="space-y-6">
+        {/* Search Header */}
+        <div className="flex items-center space-x-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Търсете по име или предмет..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button 
+            className={`p-2 text-gray-600 hover:text-gray-900 bg-white rounded-lg border border-gray-300 ${isFiltersOpen ? 'bg-blue-50 border-blue-200' : ''}`}
+            onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+          >
+            <Sliders className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Filters */}
+        {isFiltersOpen && (
+          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr] gap-6">
+              {/* Subjects */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-900">
+                  Предмет
+                </label>
+                <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-2">
+                  <button
+                    onClick={() => setSelectedSubject('')}
+                    className={`flex items-center justify-between px-4 py-2.5 text-sm rounded-lg border min-h-[2.75rem] ${
+                      selectedSubject === ''
+                        ? 'bg-blue-50 border-blue-200 text-blue-700'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="line-clamp-2">Всички</span>
+                    {selectedSubject === '' && <Check className="w-5 h-5 flex-shrink-0 ml-2" />}
+                  </button>
+                  {subjects.map((subject) => (
+                    <button
+                      key={subject}
+                      onClick={() => setSelectedSubject(subject)}
+                      className={`flex items-center justify-between px-4 py-2.5 text-sm rounded-lg border min-h-[2.75rem] ${
+                        selectedSubject === subject
+                          ? 'bg-blue-50 border-blue-200 text-blue-700'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <span className="line-clamp-2">{subject}</span>
+                      {selectedSubject === subject && <Check className="w-5 h-5 flex-shrink-0 ml-2" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Price Range */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-900">
+                  Максимална цена
+                </label>
+                <div className="px-2">
+                  <input
+                    type="range"
+                    min="20"
+                    max="200"
+                    value={priceRange}
+                    onChange={(e) => setPriceRange(Number(e.target.value))}
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <div className="mt-1 flex justify-between text-sm text-gray-500">
+                    <span>20 лв.</span>
+                    <span className="text-blue-600 font-medium">{priceRange} лв.</span>
+                    <span>200 лв.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rating */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-900">
+                  Минимална оценка
+                </label>
+                <div className="px-2">
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="0.1"
+                    value={minRating}
+                    onChange={(e) => setMinRating(Number(e.target.value))}
+                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <div className="mt-1 flex justify-between text-sm text-gray-500">
+                    <span>1.0</span>
+                    <span className="text-blue-600 font-medium">{minRating.toFixed(1)}</span>
+                    <span>5.0</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Results */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {tutors.map((tutor) => (
+            <div key={tutor.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+              <div className="flex items-start space-x-4">
+                <img
+                  src={tutor.image}
+                  alt={tutor.name}
+                  className="w-16 h-16 rounded-full object-cover"
+                />
+                <div className="flex-1">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">{tutor.name}</h3>
+                      <p className="text-sm text-gray-600">{tutor.subject}</p>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                      <span className="text-sm font-medium text-gray-900">{tutor.rating}</span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-600">{tutor.description}</p>
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-lg font-semibold text-gray-900">{tutor.price} лв./час</span>
+                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                      Свържи се
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </AuthenticatedLayout>
+  );
+}
+
+export default TutorSearch;
