@@ -9,6 +9,7 @@ import Messages from './pages/Messages';
 import Classroom from './pages/Classroom';
 import Settings from './pages/Settings';
 import TutorSearch from './pages/TutorSearch';
+import TutorProfile from './pages/TutorProfile';
 
 function PublicNavBar() {
   return (
@@ -52,6 +53,7 @@ function App() {
           <Route path="/classroom" element={<Classroom />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/tutors" element={<TutorSearch />} />
+          <Route path="/tutors/:id" element={<TutorProfile />} />
         </Routes>
       </div>
     </Router>

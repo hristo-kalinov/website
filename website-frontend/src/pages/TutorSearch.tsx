@@ -1,54 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthenticatedLayout } from './Dashboard';
 import { Search, Sliders, Star, Check } from 'lucide-react';
-
-const subjects = [
-  'Математика',
-  'Български език',
-  'Английски език',
-  'История',
-  'География',
-  'Биология',
-  'Химия',
-  'Физика',
-  'Информатика',
-  'Немски език',
-  'Френски език',
-  'Испански език',
-  'Италиански език',
-  'Руски език',
-  'Литература',
-  'Философия',
-  'Психология',
-  'Музика',
-  'Изобразително изкуство',
-  'Програмиране',
-  'Web дизайн',
-  'Счетоводство',
-  'Икономика',
-  'Статистика'
-];
-
-const tutors = [
-  {
-    id: 1,
-    name: 'Мария Петрова',
-    subject: 'Математика',
-    rating: 4.8,
-    price: 50,
-    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    description: 'Преподавател с 10 години опит в подготовката за матура и кандидатстудентски изпити.',
-  },
-  {
-    id: 2,
-    name: 'Георги Димитров',
-    subject: 'Английски език',
-    rating: 4.9,
-    price: 45,
-    image: 'https://images.unsplash.com/photo-1519345182560-3f2917c472ef?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    description: 'Сертифициран преподавател по английски език с фокус върху разговорната реч.',
-  },
-];
 
 function TutorSearch() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,6 +8,62 @@ function TutorSearch() {
   const [priceRange, setPriceRange] = useState(100);
   const [minRating, setMinRating] = useState(4);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [subjects, setSubjects] = useState([]);
+  const [tutors, setTutors] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Fetch subjects on component mount
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const response = await fetch('http://localhost:8001/tutors/subjects');
+        if (!response.ok) throw new Error('Failed to fetch subjects');
+        const data = await response.json();
+        setSubjects(data);
+      } catch (err) {
+        setError(err.message);
+      }
+    };
+    fetchSubjects();
+  }, []);
+
+  // Fetch tutors whenever filters change
+  useEffect(() => {
+    const fetchTutors = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        // Build query parameters
+        const params = new URLSearchParams();
+        if (searchTerm) params.append('search_term', searchTerm);
+        if (selectedSubject) params.append('subject', selectedSubject);
+        params.append('max_price', priceRange);
+        params.append('min_rating', minRating);
+
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:8001/tutors/search?${params.toString()}`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+
+        if (!response.ok) throw new Error('Failed to fetch tutors');
+        const data = await response.json();
+        setTutors(data);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Add a small debounce to prevent too many requests while typing
+    const timer = setTimeout(() => {
+      fetchTutors();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, selectedSubject, priceRange, minRating]);
 
   return (
     <AuthenticatedLayout>
@@ -166,39 +174,69 @@ function TutorSearch() {
           </div>
         )}
 
-        {/* Results */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {tutors.map((tutor) => (
-            <div key={tutor.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-              <div className="flex items-start space-x-4">
-                <img
-                  src={tutor.image}
-                  alt={tutor.name}
-                  className="w-16 h-16 rounded-full object-cover"
-                />
-                <div className="flex-1">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{tutor.name}</h3>
-                      <p className="text-sm text-gray-600">{tutor.subject}</p>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                      <span className="text-sm font-medium text-gray-900">{tutor.rating}</span>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-sm text-gray-600">{tutor.description}</p>
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="text-lg font-semibold text-gray-900">{tutor.price} лв./час</span>
-                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                      Свържи се
-                    </button>
-                  </div>
-                </div>
+        {/* Loading and Error States */}
+        {isLoading && (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
+
+        {/* Results */}
+        {!isLoading && !error && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {tutors.length > 0 ? (
+              tutors.map((tutor) => (
+                <div key={tutor.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+                  <div className="flex items-start space-x-4">
+                    <img
+                      src={`http://localhost:8001${tutor.image}`}
+                      alt={tutor.name}
+                      className="w-16 h-16 rounded-full object-cover"
+                    />
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">{tutor.name}</h3>
+                          <p className="text-sm text-gray-600">{tutor.subject}</p>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                          <span className="text-sm font-medium text-gray-900">{tutor.rating}</span>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-600">{tutor.description}</p>
+                      <div className="mt-4 flex items-center justify-between">
+                        <span className="text-lg font-semibold text-gray-900">{tutor.price} лв./час</span>
+                        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                          Свържи се
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-2 text-center py-8">
+                <p className="text-gray-500">Няма намерени репетитори с избраните филтри</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </AuthenticatedLayout>
   );

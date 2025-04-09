@@ -196,7 +196,7 @@ export function BalanceButton() {
           throw new Error('No authentication token found');
         }
 
-        const response = await fetch('http://localhost:8000/balance', {
+        const response = await fetch('http://localhost:8001/balance', {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -268,7 +268,7 @@ function Dashboard() {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:8000/upload-profile-picture/', {
+      const response = await fetch('http://localhost:8001/upload-profile-picture/', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -302,7 +302,7 @@ function Dashboard() {
       }
   
       try {
-        const response = await fetch("http://localhost:8000/users/me", {
+        const response = await fetch("http://localhost:8001/users/me", {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -343,7 +343,7 @@ function Dashboard() {
     console.log("Saving bio:", tempBio);
     
     try {
-      const response = await fetch('http://localhost:8000/users/change_bio', {
+      const response = await fetch('http://localhost:8001/users/change_bio', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -466,7 +466,7 @@ function Dashboard() {
           <div className="relative group">
           <img
             src={userData?.profile_picture_url ? 
-              `http://localhost:8000${userData.profile_picture_url}` : 
+              `http://localhost:8001${userData.profile_picture_url}` : 
               "https://via.placeholder.com/160/E0E7FF/808080?text=No+Image"
             }
             alt="Profile"

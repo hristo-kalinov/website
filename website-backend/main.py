@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -14,7 +14,14 @@ from jwt import PyJWTError
 import os
 import shutil
 import logging
+from datetime import datetime, timedelta
+import secrets
+JWT_APP_ID = "your_app_id"  # set this in your .env or config
+JWT_APP_SECRET = "your_strong_secret_key"
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_MINUTES = 60
 logger = logging.getLogger(__name__)
+
 # Pydantic models
 class UserLogin(BaseModel):
     email: str
@@ -57,6 +64,22 @@ class UserInDB(BaseModel):
 
 class BioUpdate(BaseModel):
     bio: str
+
+# Add these Pydantic models
+class Tutor(BaseModel):
+    id: int
+    name: str
+    subject: str
+    rating: float
+    price: float
+    image: str
+    description: str
+
+class TutorSearchFilters(BaseModel):
+    search_term: Optional[str] = None
+    subject: Optional[str] = None
+    max_price: Optional[float] = None
+    min_rating: Optional[float] = None
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -149,14 +172,9 @@ async def authenticate_user(email: str, password: str):
         return False
     return user
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    print(f"\n--- TOKEN VALIDATION ---", flush=True)
-    print(f"Received token: {token[:15]}...", flush=True)  # Log first 15 chars
-    
+async def get_current_user(token: str = Depends(oauth2_scheme)):    
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print(f"Decoded payload: {payload}", flush=True)
-        
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])        
         email = payload.get("sub")
         user_type = payload.get("user_type")
         
@@ -164,21 +182,17 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
             print("ERROR: Missing email/user_type in token", flush=True)
             raise HTTPException(status_code=401, detail="Invalid token payload")
             
-        print(f"Looking up user: {email}", flush=True)
         user = await get_user(email)
         
         if not user:
             print(f"ERROR: User not found for email: {email}", flush=True)
             raise HTTPException(status_code=401, detail="User not found")
             
-        print(f"Authenticated as: {email} ({user_type})", flush=True)
         return user
         
     except PyJWTError as e:
-        print(f"JWT ERROR: {str(e)}", flush=True)
         raise HTTPException(status_code=401, detail="Invalid token")
     except Exception as e:
-        print(f"UNEXPECTED ERROR: {str(e)}", flush=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 async def get_current_active_user(current_user: UserInDB = Depends(get_current_user)):
@@ -354,6 +368,179 @@ async def get_own_bio(current_user: UserInDB = Depends(get_current_active_user))
         if not result:
             raise HTTPException(status_code=404, detail="Tutor not found")
         return {"bio": result["bio"]}
+    finally:
+        cursor.close()
+        conn.close()
+@app.post("/generate-jitsi-token")
+async def generate_jitsi_token(
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    room = secrets.token_hex(16)  # Generate a random room name (removed trailing comma)
+    now = datetime.utcnow() + timedelta(hours=3)
+    print(now + timedelta(minutes=JWT_EXPIRE_MINUTES), flush=True)
+    expire = now + timedelta(minutes=JWT_EXPIRE_MINUTES)
+    
+    payload = {
+        "typ": "JWT",
+        "alg": "HS256",
+        "aud": JWT_APP_ID,
+        "iss": JWT_APP_ID,
+        "sub": "*",
+        "room": "*",
+        "iat": int(now.timestamp()),  # Issued At: Time the token was generated
+        "nbf": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=JWT_EXPIRE_MINUTES)).timestamp()),
+        "context": {
+            "user": {
+            "name": f"{current_user.first_name}"
+            }
+        }
+    }
+
+    token = jwt.encode(payload, JWT_APP_SECRET, algorithm=JWT_ALGORITHM)
+    print(payload, flush=True)
+    return {"jitsi_token": token, "room": room}
+
+from typing import List, Optional
+from fastapi import Query
+
+# Add these endpoints to your FastAPI app
+@app.get("/tutors/subjects", response_model=List[str])
+async def get_all_subjects():
+    """Return all available subjects for tutors"""
+    return [
+        'Математика',
+        'Български език',
+        'Английски език',
+        'История',
+        'География',
+        'Биология',
+        'Химия',
+        'Физика',
+        'Информатика',
+        'Немски език',
+        'Френски език',
+        'Испански език',
+        'Италиански език',
+        'Руски език',
+        'Литература',
+        'Философия',
+        'Психология',
+        'Музика',
+        'Изобразително изкуство',
+        'Програмиране',
+        'Web дизайн',
+        'Счетоводство',
+        'Икономика',
+        'Статистика'
+    ]
+
+@app.get("/tutors/search", response_model=List[Tutor])
+async def search_tutors(
+    search_term: Optional[str] = Query(None, description="Search by name or subject"),
+    subject: Optional[str] = Query(None, description="Filter by subject"),
+    max_price: Optional[float] = Query(100, description="Maximum hourly rate"),
+    min_rating: Optional[float] = Query(4.0, description="Minimum tutor rating"),
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    """
+    Search for tutors with optional filters
+    
+    Returns a list of tutors matching the search criteria
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Base query
+        query = """
+            SELECT 
+                t.id,
+                CONCAT(t.first_name, ' ', t.last_name) as name,
+                t.subject,
+                t.rating,
+                t.hourly_rate as price,
+                COALESCE(t.profile_picture_url, '/uploads/default_pfp.webp') as image,
+                COALESCE(t.bio, '') as description
+            FROM tutors t
+            WHERE t.is_active = TRUE
+        """
+        
+        # Add filters
+        params = []
+        conditions = []
+        
+        if search_term:
+            conditions.append("""
+                (CONCAT(t.first_name, ' ', t.last_name) LIKE %s 
+                OR t.subject LIKE %s)
+            """)
+            params.extend([f"%{search_term}%", f"%{search_term}%"])
+        
+        if subject:
+            conditions.append("t.subject = %s")
+            params.append(subject)
+        
+        if max_price:
+            conditions.append("t.hourly_rate <= %s")
+            params.append(max_price)
+        
+        if min_rating:
+            conditions.append("t.rating >= %s")
+            params.append(min_rating)
+        
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+        
+        # Add sorting (you might want to make this configurable)
+        query += " ORDER BY t.rating DESC, t.hourly_rate ASC"
+        
+        cursor.execute(query, params)
+        tutors = cursor.fetchall()
+        
+        return tutors
+        
+    except Error as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.get("/tutors/{tutor_id}", response_model=Tutor)
+async def get_tutor_details(
+    tutor_id: int,
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    """Get detailed information about a specific tutor"""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        cursor.execute("""
+            SELECT 
+                t.id,
+                CONCAT(t.first_name, ' ', t.last_name) as name,
+                t.subject,
+                t.rating,
+                t.hourly_rate as price,
+                COALESCE(t.profile_picture_url, '/uploads/default_pfp.webp') as image,
+                COALESCE(t.bio, '') as description,
+                t.profile_title,
+                t.video_intro_url,
+                t.verification_status,
+                t.total_reviews
+            FROM tutors t
+            WHERE t.id = %s AND t.is_active = TRUE
+        """, (tutor_id,))
+        
+        tutor = cursor.fetchone()
+        if not tutor:
+            raise HTTPException(status_code=404, detail="Tutor not found")
+        
+        return tutor
+        
+    except Error as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         cursor.close()
         conn.close()

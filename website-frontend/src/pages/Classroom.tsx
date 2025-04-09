@@ -1,132 +1,73 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { AuthenticatedLayout } from './Dashboard';
-import Peer from 'peerjs';
 
 function Classroom() {
-  const [peerId, setPeerId] = useState('');
-  const [remotePeerId, setRemotePeerId] = useState('');
-  const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [isCallActive, setIsCallActive] = useState(false); // Toggle call UI
-  const peerInstance = useRef(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Initialize PeerJS connection
-  useEffect(() => {
-    const peer = new Peer();
+  const joinMeeting = async () => {
+    setLoading(true);
+    setError(null);
 
-    peer.on('open', (id) => {
-      setPeerId(id);
-    });
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        return;
+      }
 
-    peer.on('call', (call) => {
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then((stream) => {
-          setLocalStream(stream);
-          call.answer(stream);
-          call.on('stream', (remoteStream) => {
-            setRemoteStream(remoteStream);
-            setIsCallActive(true);
-          });
-        })
-        .catch(console.error);
-    });
+      const response = await fetch('http://localhost:8001/generate-jitsi-token', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-    peerInstance.current = peer;
+      if (!response.ok) {
+        throw new Error('Failed to fetch Jitsi token.');
+      }
 
-    return () => {
-      if (peerInstance.current) peerInstance.current.destroy();
-      if (localStream) localStream.getTracks().forEach(track => track.stop());
-    };
-  }, []);
+      const data = await response.json();
+      const { jitsi_token, room } = data;
 
-  const startCall = () => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then((stream) => {
-        setLocalStream(stream);
-        const call = peerInstance.current.call(remotePeerId, stream);
-        call.on('stream', (remoteStream) => {
-          setRemoteStream(remoteStream);
-          setIsCallActive(true);
-        });
-      })
-      .catch(console.error);
-  };
+      const domain = 'localhost:8443';
+      const roomName = room;
 
-  const endCall = () => {
-    if (localStream) localStream.getTracks().forEach(track => track.stop());
-    if (remoteStream) remoteStream.getTracks().forEach(track => track.stop());
-    setLocalStream(null);
-    setRemoteStream(null);
-    setIsCallActive(false);
+      const url = `https://${domain}/${roomName}?jwt=${jitsi_token}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+
+    } catch (err) {
+      console.error('Error joining meeting:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <AuthenticatedLayout>
       <div className="p-4">
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">Класна стая</h1>
-        
-        {!isCallActive ? (
-          <div className="bg-white rounded-lg p-4 shadow">
-            <p className="text-gray-600 mb-4">Нямате активни уроци в момента.</p>
-            
-            {/* Call Initiation UI */}
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Вашият ID: {peerId}</label>
-              </div>
-              <div>
-                <input
-                  type="text"
-                  value={remotePeerId}
-                  onChange={(e) => setRemotePeerId(e.target.value)}
-                  placeholder="Въведете ID на ученика"
-                  className="p-2 border rounded w-full"
-                />
-              </div>
-              <button
-                onClick={startCall}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-              >
-                Започни видеоурок
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg p-4 shadow">
-            <h2 className="text-xl font-semibold mb-4">Активен видеоурок</h2>
-            
-            {/* Video Call UI */}
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
-                <h3 className="text-sm text-gray-500">Вашето изображение:</h3>
-                {localStream && (
-                  <video
-                    autoPlay
-                    muted
-                    className="w-full h-auto rounded border border-gray-200"
-                    ref={(ref) => ref && (ref.srcObject = localStream)}
-                  />
-                )}
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm text-gray-500">Ученик:</h3>
-                {remoteStream && (
-                  <video
-                    autoPlay
-                    className="w-full h-auto rounded border border-gray-200"
-                    ref={(ref) => ref && (ref.srcObject = remoteStream)}
-                  />
-                )}
-              </div>
-            </div>
-            
-            <button
-              onClick={endCall}
-              className="mt-4 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
-            >
-              Приключи видеоурок
-            </button>
-          </div>
+        <h1 className="text-2xl font-bold mb-4">Virtual Classroom</h1>
+
+        <button
+          onClick={joinMeeting}
+          disabled={loading}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex items-center"
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Joining...
+            </>
+          ) : (
+            'Start/Join Classroom'
+          )}
+        </button>
+
+        {error && (
+          <div className="mt-4 text-red-600">{error}</div>
         )}
       </div>
     </AuthenticatedLayout>
