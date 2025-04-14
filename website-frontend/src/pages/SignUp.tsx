@@ -30,40 +30,6 @@ const subjects = [
   'Web дизайн',
 ];
 
-const commonLanguages = [
-  'Български',
-  'Английски',
-  'Немски',
-  'Френски',
-  'Испански',
-  'Италиански',
-  'Руски',
-];
-
-const allLanguages = [
-  ...commonLanguages,
-  'Арабски',
-  'Китайски',
-  'Японски',
-  'Корейски',
-  'Португалски',
-  'Холандски',
-  'Шведски',
-  'Норвежки',
-  'Датски',
-  'Финландски',
-  'Гръцки',
-  'Турски',
-  'Иврит',
-  'Хинди',
-  'Виетнамски',
-  'Тайландски',
-  'Полски',
-  'Чешки',
-  'Унгарски',
-  'Румънски',
-];
-
 function SignUp() {
   const navigate = useNavigate();
 
@@ -80,28 +46,14 @@ function SignUp() {
   const [selectedSubject, setSelectedSubject] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [aboutMe, setAboutMe] = useState('');
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [price, setPrice] = useState('');
   const [showSubjects, setShowSubjects] = useState(false);
-  const [showLanguageSearch, setShowLanguageSearch] = useState(false);
-  const [languageSearch, setLanguageSearch] = useState('');
-  const [customLanguages, setCustomLanguages] = useState<string[]>([]);
 
   const filteredSubjects = useMemo(() => {
     return subjects.filter((subject) =>
       subject.toLowerCase().includes(subjectSearch.toLowerCase())
     );
   }, [subjectSearch]);
-
-  const filteredLanguages = useMemo(() => {
-    return allLanguages.filter(
-      (lang) =>
-        lang.toLowerCase().includes(languageSearch.toLowerCase()) &&
-        !selectedLanguages.includes(lang) &&
-        !commonLanguages.includes(lang)
-    );
-  }, [languageSearch, selectedLanguages]);
 
   // Common function to perform the actual registration fetch
   const doRegister = async () => {
@@ -122,8 +74,6 @@ function SignUp() {
       userData.subject = selectedSubject;
       userData.title = title;
       userData.description = description;
-      userData.aboutMe = aboutMe;
-      userData.languages = selectedLanguages;
       userData.price = price;
     }
 
@@ -174,21 +124,6 @@ function SignUp() {
       // Final teacher registration
       await doRegister();
     }
-  };
-
-  const toggleLanguage = (language: string) => {
-    setSelectedLanguages((prev) =>
-      prev.includes(language)
-        ? prev.filter((lang) => lang !== language)
-        : [...prev, language]
-    );
-  };
-
-  const handleAddCustomLanguage = (language: string) => {
-    setSelectedLanguages((prev) => [...prev, language]);
-    setCustomLanguages((prev) => [...prev, language]);
-    setLanguageSearch('');
-    setShowLanguageSearch(false);
   };
 
   return (
@@ -420,113 +355,6 @@ function SignUp() {
                   rows={4}
                   required
                 />
-              </div>
-
-              <div className="transform transition-all duration-300 hover:scale-102">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Относно вас
-                </label>
-                <textarea
-                  value={aboutMe}
-                  onChange={(e) => setAboutMe(e.target.value)}
-                  placeholder="Разкажете за вашия опит и квалификация (минимум 40 думи)..."
-                  className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                  rows={4}
-                  required
-                />
-              </div>
-
-              <div className="space-y-4">
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Изберете езиците, на които преподавате
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {commonLanguages.map((language) => (
-                    <button
-                      key={language}
-                      type="button"
-                      onClick={() => toggleLanguage(language)}
-                      className={`flex items-center px-4 py-3 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 ${
-                        selectedLanguages.includes(language)
-                          ? 'border-purple-600 bg-gradient-to-r from-purple-50 to-blue-50 text-purple-700'
-                          : 'border-gray-300 hover:border-blue-400 text-gray-700'
-                      }`}
-                    >
-                      <Book className="w-5 h-5 mr-2" />
-                      {language}
-                    </button>
-                  ))}
-                </div>
-
-                {customLanguages.length > 0 && (
-                  <div className="mt-4">
-                    <p className="text-sm font-medium text-gray-700 mb-2">
-                      Добавени езици:
-                    </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      {customLanguages.map((language) => (
-                        <button
-                          key={language}
-                          type="button"
-                          onClick={() => toggleLanguage(language)}
-                          className={`flex items-center px-4 py-3 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 ${
-                            selectedLanguages.includes(language)
-                              ? 'border-blue-600 bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700'
-                              : 'border-gray-300 hover:border-blue-400 text-gray-700'
-                          }`}
-                        >
-                          <Book className="w-5 h-5 mr-2" />
-                          {language}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowLanguageSearch(true)}
-                    className="flex items-center px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-600 transition-all duration-300 w-full justify-center"
-                  >
-                    <Plus className="w-5 h-5 mr-2" />
-                    Добавете друг език
-                  </button>
-
-                  {showLanguageSearch && (
-                    <div className="mt-3">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={languageSearch}
-                          onChange={(e) => setLanguageSearch(e.target.value)}
-                          placeholder="Търсете език..."
-                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
-                        />
-                        {languageSearch && (
-                          <div className="absolute z-10 w-full mt-1 bg-white rounded-xl shadow-lg max-h-60 overflow-auto">
-                            {filteredLanguages.map((language) => (
-                              <button
-                                key={language}
-                                type="button"
-                                onClick={() => handleAddCustomLanguage(language)}
-                                className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors duration-200 flex items-center"
-                              >
-                                <Book className="w-5 h-5 mr-2 text-gray-400" />
-                                {language}
-                              </button>
-                            ))}
-                            {filteredLanguages.length === 0 && (
-                              <p className="px-4 py-3 text-gray-500">
-                                Не са намерени езици
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
 
               <div className="transform transition-all duration-300 hover:scale-102">

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { AuthenticatedLayout } from './Dashboard';
-import { Search, Sliders, Star, Check } from 'lucide-react';
+import { Search, Sliders, Check } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 function TutorSearch() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [priceRange, setPriceRange] = useState(100);
-  const [minRating, setMinRating] = useState(4);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [subjects, setSubjects] = useState([]);
   const [tutors, setTutors] = useState([]);
@@ -15,46 +15,55 @@ function TutorSearch() {
 
   // Fetch subjects on component mount
   useEffect(() => {
-    const fetchSubjects = async () => {
-      try {
-        const response = await fetch('http://localhost:8001/tutors/subjects');
-        if (!response.ok) throw new Error('Failed to fetch subjects');
-        const data = await response.json();
-        setSubjects(data);
-      } catch (err) {
-        setError(err.message);
-      }
+    const fetchSubjects = () => {
+      fetch('http://localhost:8001/tutors/subjects')
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error('Failed to fetch subjects');
+          }
+          return response.json();
+        })
+        .then((data) => {
+          setSubjects(data);
+        })
+        .catch((err) => {
+          setError(err.message);
+        });
     };
     fetchSubjects();
   }, []);
 
   // Fetch tutors whenever filters change
   useEffect(() => {
-    const fetchTutors = async () => {
+    const fetchTutors = () => {
       setIsLoading(true);
       setError(null);
-      
-      try {
-        // Build query parameters
-        const params = new URLSearchParams();
-        if (searchTerm) params.append('search_term', searchTerm);
-        if (selectedSubject) params.append('subject', selectedSubject);
-        params.append('max_price', priceRange);
-        params.append('min_rating', minRating);
 
-        const token = localStorage.getItem('token');
-        const response = await fetch(`http://localhost:8001/tutors/search?${params.toString()}`, {
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search_term', searchTerm);
+      if (selectedSubject) params.append('subject', selectedSubject);
+      params.append('max_price', priceRange);
+
+      const token = localStorage.getItem('token');
+      fetch(`http://localhost:8001/tutors/search?${params.toString()}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error('Failed to fetch tutors');
+          }
+          return response.json();
+        })
+        .then((data) => {
+          setTutors(data);
+        })
+        .catch((err) => {
+          setError(err.message);
+        })
+        .finally(() => {
+          setIsLoading(false);
         });
-
-        if (!response.ok) throw new Error('Failed to fetch tutors');
-        const data = await response.json();
-        setTutors(data);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
     };
 
     // Add a small debounce to prevent too many requests while typing
@@ -63,7 +72,7 @@ function TutorSearch() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchTerm, selectedSubject, priceRange, minRating]);
+  }, [searchTerm, selectedSubject, priceRange]);
 
   return (
     <AuthenticatedLayout>
@@ -80,7 +89,7 @@ function TutorSearch() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <button 
+          <button
             className={`p-2 text-gray-600 hover:text-gray-900 bg-white rounded-lg border border-gray-300 ${isFiltersOpen ? 'bg-blue-50 border-blue-200' : ''}`}
             onClick={() => setIsFiltersOpen(!isFiltersOpen)}
           >
@@ -91,7 +100,7 @@ function TutorSearch() {
         {/* Filters */}
         {isFiltersOpen && (
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr] gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-6">
               {/* Subjects */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-900">
@@ -147,29 +156,6 @@ function TutorSearch() {
                   </div>
                 </div>
               </div>
-
-              {/* Rating */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-900">
-                  Минимална оценка
-                </label>
-                <div className="px-2">
-                  <input
-                    type="range"
-                    min="1"
-                    max="5"
-                    step="0.1"
-                    value={minRating}
-                    onChange={(e) => setMinRating(Number(e.target.value))}
-                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                  />
-                  <div className="mt-1 flex justify-between text-sm text-gray-500">
-                    <span>1.0</span>
-                    <span className="text-blue-600 font-medium">{minRating.toFixed(1)}</span>
-                    <span>5.0</span>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -201,7 +187,11 @@ function TutorSearch() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {tutors.length > 0 ? (
               tutors.map((tutor) => (
-                <div key={tutor.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+                <Link
+                  to={`${tutor.id}`}
+                  key={tutor.id}
+                  className="block bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
+                >
                   <div className="flex items-start space-x-4">
                     <img
                       src={`http://localhost:8001${tutor.image}`}
@@ -214,10 +204,6 @@ function TutorSearch() {
                           <h3 className="text-lg font-semibold text-gray-900">{tutor.name}</h3>
                           <p className="text-sm text-gray-600">{tutor.subject}</p>
                         </div>
-                        <div className="flex items-center space-x-1">
-                          <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                          <span className="text-sm font-medium text-gray-900">{tutor.rating}</span>
-                        </div>
                       </div>
                       <p className="mt-2 text-sm text-gray-600">{tutor.description}</p>
                       <div className="mt-4 flex items-center justify-between">
@@ -228,8 +214,7 @@ function TutorSearch() {
                       </div>
                     </div>
                   </div>
-                </div>
-              ))
+                </Link>))
             ) : (
               <div className="col-span-2 text-center py-8">
                 <p className="text-gray-500">Няма намерени репетитори с избраните филтри</p>

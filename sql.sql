@@ -1,6 +1,7 @@
 CREATE DATABASE IF NOT EXISTS website_db;
 USE website_db;
 
+DROP TABLE classroom_sessions;
 DROP TABLE tutors;
 DROP TABLE students;
 
@@ -39,15 +40,32 @@ CREATE TABLE students (
     last_login_at TIMESTAMP NULL,
     is_active BOOLEAN DEFAULT TRUE
 );
+
+CREATE TABLE conversations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tutor_id INT NOT NULL,
+    student_id INT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tutor_id) REFERENCES tutors(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_conversation (tutor_id, student_id)
+);
+
 CREATE TABLE messages (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    conversation_id INT NOT NULL,
     sender_id INT NOT NULL,
-    receiver_id INT NOT NULL,
+    sender_type ENUM('tutor', 'student') NOT NULL,
     content TEXT NOT NULL,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_read BOOLEAN DEFAULT FALSE,
-    INDEX idx_sender_receiver (sender_id, receiver_id),
-    INDEX idx_receiver_sender (receiver_id, sender_id)
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 SELECT * FROM tutors;
 SELECT * FROM students;
+SELECT * FROM classroom_sessions;
+DROP TABLE messages;
+INSERT INTO conversations (tutor_id, student_id) VALUES (1, 1);
+
+SELECT * FROM conversations;

@@ -16,6 +16,54 @@ import shutil
 import logging
 from datetime import datetime, timedelta
 import secrets
+import json
+from fastapi import WebSocket, WebSocketDisconnect
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: dict[int, WebSocket] = {}
+
+    async def connect(self, websocket: WebSocket, user_id: int):
+        await websocket.accept()
+        self.active_connections[user_id] = websocket
+
+    def disconnect(self, user_id: int):
+        if user_id in self.active_connections:
+            del self.active_connections[user_id]
+
+    async def send_personal_message(self, message: str, user_id: int):
+        if user_id in self.active_connections:
+            await self.active_connections[user_id].send_text(message)
+
+manager = ConnectionManager()
+
+class MessageBase(BaseModel):
+    content: str
+
+class MessageCreate(MessageBase):
+    pass
+
+class Message(MessageBase):
+    id: int
+    conversation_id: int
+    sender_id: int
+    sender_type: str
+    sent_at: datetime
+    is_read: bool
+
+    class Config:
+        from_attributes = True
+
+class Conversation(BaseModel):
+    id: int
+    tutor_id: int
+    student_id: int
+    created_at: datetime
+    updated_at: datetime
+    last_message: Optional[Message] = None
+
+    class Config:
+        from_attributes = True
 JWT_APP_ID = "your_app_id"  # set this in your .env or config
 JWT_APP_SECRET = "your_strong_secret_key"
 JWT_ALGORITHM = "HS256"
@@ -85,6 +133,15 @@ class TutorSearchFilters(BaseModel):
 app = FastAPI()
 
 # Add CORS middleware
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: int):
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Handle incoming messages if needed
+    except WebSocketDisconnect:
+        manager.disconnect(user_id)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -209,19 +266,35 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return {"access_token": access_token, "token_type": "bearer"}
-
 @app.post("/register")
 async def register_user(user_data: dict):
-    # Validate input data
-    required_fields = ['email', 'password', 'first_name', 'last_name', 'user_type']
-    if not all(field in user_data for field in required_fields):
-        raise HTTPException(status_code=400, detail="Missing required fields")
-    
-    # Check if user exists
-    existing_user = await get_user(user_data['email'])
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+    # First check common required fields
+    common_fields = ['email', 'password', 'first_name', 'last_name', 'user_type']
+    missing_common = [field for field in common_fields if field not in user_data]
+    if missing_common:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing common fields: {', '.join(missing_common)}"
+        )
 
+    if user_data['user_type'] == 'tutor':
+        # Tutor-specific fields (mapping request names to what we expect)
+        tutor_fields = {
+            'subject': 'subject',
+            'title': 'profile_title',  # request uses 'title', DB uses 'profile_title'
+            'description': 'bio',     # request uses 'description', DB uses 'bio'
+            'price': 'hourly_rate'     # request uses 'price', DB uses 'hourly_rate'
+        }
+        
+        missing_tutor = [req_name for req_name, _ in tutor_fields.items() 
+                        if req_name not in user_data]
+        if missing_tutor:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing tutor fields: {', '.join(missing_tutor)}"
+            )
+
+    # Rest of your code remains the same until the INSERT statement
     hashed_password = get_password_hash(user_data['password'])
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -230,17 +303,28 @@ async def register_user(user_data: dict):
         if user_data['user_type'] == 'tutor':
             cursor.execute("""
                 INSERT INTO tutors 
-                (email, password_hash, first_name, last_name, subject, hourly_rate) 
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (email, password_hash, first_name, last_name, subject, profile_title,
+                 hourly_rate, bio, profile_picture_url, verification_status, 
+                 rating, total_reviews, balance, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
-                user_data['email'], 
-                hashed_password, 
-                user_data['first_name'], 
+                user_data['email'],
+                hashed_password,
+                user_data['first_name'],
                 user_data['last_name'],
-                user_data.get('subject', ''),
-                user_data.get('hourly_rate', 0.0)
+                user_data['subject'],
+                user_data['title'],           # maps to profile_title in DB
+                float(user_data['price']),    # maps to hourly_rate in DB
+                user_data['description'],    # maps to bio in DB
+                '/uploads/default_pfp.webp',
+                'unverified',
+                0.00,
+                0,
+                0.00,
+                True
             ))
         else:
+            # Student registration remains unchanged
             cursor.execute("""
                 INSERT INTO students 
                 (email, password_hash, first_name, last_name) 
@@ -251,7 +335,7 @@ async def register_user(user_data: dict):
                 user_data['first_name'], 
                 user_data['last_name']
             ))
-        
+
         conn.commit()
         return {"message": "User created successfully"}
     except Error as e:
@@ -401,11 +485,10 @@ async def generate_jitsi_token(
     print(payload, flush=True)
     return {"jitsi_token": token, "room": room}
 
-from typing import List, Optional
 from fastapi import Query
 
 # Add these endpoints to your FastAPI app
-@app.get("/tutors/subjects", response_model=List[str])
+@app.get("/tutors/subjects", response_model=list[str])
 async def get_all_subjects():
     """Return all available subjects for tutors"""
     return [
@@ -435,24 +518,18 @@ async def get_all_subjects():
         'Статистика'
     ]
 
-@app.get("/tutors/search", response_model=List[Tutor])
+@app.get("/tutors/search", response_model=list[Tutor])
 async def search_tutors(
     search_term: Optional[str] = Query(None, description="Search by name or subject"),
     subject: Optional[str] = Query(None, description="Filter by subject"),
     max_price: Optional[float] = Query(100, description="Maximum hourly rate"),
-    min_rating: Optional[float] = Query(4.0, description="Minimum tutor rating"),
     current_user: UserInDB = Depends(get_current_active_user)
 ):
-    """
-    Search for tutors with optional filters
-    
-    Returns a list of tutors matching the search criteria
-    """
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # Base query
+        # Modified query to include t.rating
         query = """
             SELECT 
                 t.id,
@@ -485,15 +562,11 @@ async def search_tutors(
             conditions.append("t.hourly_rate <= %s")
             params.append(max_price)
         
-        if min_rating:
-            conditions.append("t.rating >= %s")
-            params.append(min_rating)
-        
         if conditions:
             query += " AND " + " AND ".join(conditions)
         
-        # Add sorting (you might want to make this configurable)
-        query += " ORDER BY t.rating DESC, t.hourly_rate ASC"
+        # Sort by price only
+        query += " ORDER BY t.hourly_rate ASC"
         
         cursor.execute(query, params)
         tutors = cursor.fetchall()
@@ -505,7 +578,6 @@ async def search_tutors(
     finally:
         cursor.close()
         conn.close()
-
 @app.get("/tutors/{tutor_id}", response_model=Tutor)
 async def get_tutor_details(
     tutor_id: int,
@@ -538,6 +610,252 @@ async def get_tutor_details(
             raise HTTPException(status_code=404, detail="Tutor not found")
         
         return tutor
+        
+    except Error as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/conversations/start/{tutor_id}", response_model=Conversation)
+async def start_conversation(
+    tutor_id: int,
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    if current_user.user_type != "student":
+        raise HTTPException(status_code=403, detail="Only students can start conversations")
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Check if tutor exists
+        cursor.execute("SELECT id FROM tutors WHERE id = %s AND is_active = TRUE", (tutor_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Tutor not found")
+        
+        # Check if conversation already exists
+        cursor.execute("""
+            SELECT id FROM conversations 
+            WHERE tutor_id = %s AND student_id = %s
+        """, (tutor_id, current_user.id))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Return existing conversation
+            cursor.execute("""
+                SELECT * FROM conversations 
+                WHERE id = %s
+            """, (existing['id'],))
+            return cursor.fetchone()
+        
+        # Create new conversation
+        cursor.execute("""
+            INSERT INTO conversations (tutor_id, student_id)
+            VALUES (%s, %s)
+        """, (tutor_id, current_user.id))
+        conn.commit()
+        
+        # Return the new conversation
+        cursor.execute("""
+            SELECT * FROM conversations 
+            WHERE id = LAST_INSERT_ID()
+        """)
+        return cursor.fetchone()
+        
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.get("/conversations", response_model=list[Conversation])
+async def get_user_conversations(
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        if current_user.user_type == "tutor":
+            # Get all conversations for tutor with last message
+            cursor.execute("""
+                SELECT c.*, 
+                       (SELECT COUNT(*) FROM messages m 
+                        WHERE m.conversation_id = c.id AND m.is_read = FALSE 
+                        AND m.sender_type = 'student') as unread_count,
+                       (SELECT m.content FROM messages m 
+                        WHERE m.conversation_id = c.id 
+                        ORDER BY m.sent_at DESC LIMIT 1) as last_message_content,
+                       (SELECT m.sent_at FROM messages m 
+                        WHERE m.conversation_id = c.id 
+                        ORDER BY m.sent_at DESC LIMIT 1) as last_message_time,
+                       s.first_name as student_first_name,
+                       s.last_name as student_last_name,
+                       s.profile_picture_url as student_image
+                FROM conversations c
+                JOIN students s ON c.student_id = s.id
+                WHERE c.tutor_id = %s
+                ORDER BY c.updated_at DESC
+            """, (current_user.id,))
+        else:
+            # Get all conversations for student with last message
+            cursor.execute("""
+                SELECT c.*, 
+                       (SELECT COUNT(*) FROM messages m 
+                        WHERE m.conversation_id = c.id AND m.is_read = FALSE 
+                        AND m.sender_type = 'tutor') as unread_count,
+                       (SELECT m.content FROM messages m 
+                        WHERE m.conversation_id = c.id 
+                        ORDER BY m.sent_at DESC LIMIT 1) as last_message_content,
+                       (SELECT m.sent_at FROM messages m 
+                        WHERE m.conversation_id = c.id 
+                        ORDER BY m.sent_at DESC LIMIT 1) as last_message_time,
+                       t.first_name as tutor_first_name,
+                       t.last_name as tutor_last_name,
+                       t.profile_picture_url as tutor_image,
+                       t.subject as tutor_subject
+                FROM conversations c
+                JOIN tutors t ON c.tutor_id = t.id
+                WHERE c.student_id = %s
+                ORDER BY c.updated_at DESC
+            """, (current_user.id,))
+        
+        conversations = cursor.fetchall()
+        return conversations
+        
+    except Error as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.get("/conversations/{conversation_id}/messages", response_model=list[Message])
+async def get_conversation_messages(
+    conversation_id: int,
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Verify user has access to the conversation
+        cursor.execute("""
+            SELECT * FROM conversations 
+            WHERE id = %s AND (tutor_id = %s OR student_id = %s)
+        """, (conversation_id, current_user.id, current_user.id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        # Get messages and fetch results immediately
+        cursor.execute("""
+            SELECT * FROM messages 
+            WHERE conversation_id = %s
+            ORDER BY sent_at ASC
+        """, (conversation_id,))
+        messages = cursor.fetchall()  # Fetch messages immediately after query
+        
+        cursor.execute("""
+            UPDATE messages 
+            SET is_read = TRUE 
+            WHERE conversation_id = %s AND is_read = FALSE
+        """, (conversation_id,))
+        conn.commit()
+        
+        return messages  # Return the pre-fetched messages
+        
+    except Error as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/conversations/{conversation_id}/messages", response_model=Message)
+async def send_message(
+    conversation_id: int,
+    message: MessageCreate,
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Verify user has access to this conversation
+        cursor.execute("""
+            SELECT * FROM conversations 
+            WHERE id = %s AND (tutor_id = %s OR student_id = %s)
+        """, (conversation_id, current_user.id, current_user.id))
+        conv = cursor.fetchone()
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        # Insert message
+        cursor.execute("""
+            INSERT INTO messages (conversation_id, sender_id, sender_type, content)
+            VALUES (%s, %s, %s, %s)
+        """, (conversation_id, current_user.id, current_user.user_type, message.content))
+        
+        # Update conversation timestamp
+        cursor.execute("""
+            UPDATE conversations 
+            SET updated_at = NOW() 
+            WHERE id = %s
+        """, (conversation_id,))
+        
+        conn.commit()
+        
+        # Return the new message
+        cursor.execute("""
+            SELECT * FROM messages 
+            WHERE id = LAST_INSERT_ID()
+        """)
+        new_message = cursor.fetchone()
+        recipient_id = conv['tutor_id'] if current_user.user_type == 'student' else conv['student_id']
+        await manager.send_personal_message(
+            json.dumps({
+                "type": "new_message",
+                "conversation_id": conversation_id,
+                "sender_id": current_user.id,
+                "content": message.content
+            }),
+            recipient_id
+        )
+        
+        return new_message
+        
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.get("/conversations/unread-count")
+async def get_unread_count(
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        if current_user.user_type == "tutor":
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM messages m
+                JOIN conversations c ON m.conversation_id = c.id
+                WHERE c.tutor_id = %s AND m.sender_type = 'student' AND m.is_read = FALSE
+            """, (current_user.id,))
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM messages m
+                JOIN conversations c ON m.conversation_id = c.id
+                WHERE c.student_id = %s AND m.sender_type = 'tutor' AND m.is_read = FALSE
+            """, (current_user.id,))
+        
+        result = cursor.fetchone()
+        return {"unread_count": result['count']}
         
     except Error as e:
         raise HTTPException(status_code=500, detail=str(e))
