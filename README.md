@@ -12,13 +12,13 @@
 
 1. Install required Python packages:
    ```bash
-   pip install fastapi uvicorn mysql-connector-python passlib python-jose[cryptography] python-multipart
+   pip install fastapi[all] mysql-connector-python passlib python-jose[cryptography] python-multipart
    ```
 2.  Start the backend server:
     
     ```bash
     cd website-backend
-    python -m uvicorn main:app --reload
+    python -m uvicorn main:app --reload --port 8001
     ```
 ## Frontend Setup
 
