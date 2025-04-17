@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 import secrets
 import json
 from fastapi import WebSocket, WebSocketDisconnect
-
+from fastapi import Query
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[int, WebSocket] = {}
@@ -35,6 +35,10 @@ class ConnectionManager:
         if user_id in self.active_connections:
             await self.active_connections[user_id].send_text(message)
 
+    async def broadcast(self, message: str, exclude_user_id: int = None):
+        for user_id, connection in self.active_connections.items():
+            if user_id != exclude_user_id:
+                await connection.send_text(message)
 manager = ConnectionManager()
 
 class MessageBase(BaseModel):
@@ -47,7 +51,6 @@ class Message(MessageBase):
     id: int
     conversation_id: int
     sender_id: int
-    sender_type: str
     sent_at: datetime
     is_read: bool
 
@@ -64,7 +67,8 @@ class Conversation(BaseModel):
 
     class Config:
         from_attributes = True
-JWT_APP_ID = "your_app_id"  # set this in your .env or config
+
+JWT_APP_ID = "your_app_id"
 JWT_APP_SECRET = "your_strong_secret_key"
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = 60
@@ -113,7 +117,6 @@ class UserInDB(BaseModel):
 class BioUpdate(BaseModel):
     bio: str
 
-# Add these Pydantic models
 class Tutor(BaseModel):
     id: int
     name: str
@@ -132,16 +135,15 @@ class TutorSearchFilters(BaseModel):
 # Initialize FastAPI app
 app = FastAPI()
 
-# Add CORS middleware
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: int):
     await manager.connect(websocket, user_id)
     try:
         while True:
-            data = await websocket.receive_text()
-            # Handle incoming messages if needed
+            await websocket.receive_text()  # keep alive
     except WebSocketDisconnect:
-        manager.disconnect(user_id)
+        await manager.disconnect(websocket, user_id)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -155,7 +157,8 @@ DB_CONFIG = {
     'host': 'localhost',
     'database': 'website_db',
     'user': 'root',
-    'password': 'amsterdam'
+    'password': 'amsterdam',
+    'use_pure': True
 }
 
 # Security configurations
@@ -175,7 +178,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Serve the uploads folder
 app.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
-# Database connection
+
 def get_db_connection():
     try:
         connection = mysql.connector.connect(**DB_CONFIG)
@@ -183,7 +186,6 @@ def get_db_connection():
     except Error as e:
         raise HTTPException(status_code=500, detail="Database connection error")
 
-# Authentication functions
 def verify_password(plain_password: str, hashed_password: str):
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -200,24 +202,10 @@ async def get_user(email: str) -> Optional[UserInDB]:
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        # Check tutors table first
-        cursor.execute("""
-            SELECT *, 'tutor' as user_type FROM tutors 
-            WHERE email = %s
-        """, (email,))
-        tutor = cursor.fetchone()
-        if tutor:
-            return UserInDB(**tutor)
-
-        # Check students table if not found in tutors
-        cursor.execute("""
-            SELECT *, 'student' as user_type FROM students 
-            WHERE email = %s
-        """, (email,))
-        student = cursor.fetchone()
-        if student:
-            return UserInDB(**student)
-        
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+        if user:
+            return UserInDB(**user)
         return None
     finally:
         cursor.close()
@@ -266,56 +254,47 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
 @app.post("/register")
 async def register_user(user_data: dict):
-    # First check common required fields
-    common_fields = ['email', 'password', 'first_name', 'last_name', 'user_type']
-    missing_common = [field for field in common_fields if field not in user_data]
-    if missing_common:
+    required_fields = ['email', 'password', 'first_name', 'last_name', 'user_type']
+    missing_fields = [field for field in required_fields if field not in user_data]
+    if missing_fields:
         raise HTTPException(
             status_code=400,
-            detail=f"Missing common fields: {', '.join(missing_common)}"
+            detail=f"Missing required fields: {', '.join(missing_fields)}"
         )
-
+    
     if user_data['user_type'] == 'tutor':
-        # Tutor-specific fields (mapping request names to what we expect)
-        tutor_fields = {
-            'subject': 'subject',
-            'title': 'profile_title',  # request uses 'title', DB uses 'profile_title'
-            'description': 'bio',     # request uses 'description', DB uses 'bio'
-            'price': 'hourly_rate'     # request uses 'price', DB uses 'hourly_rate'
-        }
-        
-        missing_tutor = [req_name for req_name, _ in tutor_fields.items() 
-                        if req_name not in user_data]
+        tutor_fields = ['subject', 'title', 'description', 'price']
+        missing_tutor = [field for field in tutor_fields if field not in user_data]
         if missing_tutor:
             raise HTTPException(
                 status_code=400,
                 detail=f"Missing tutor fields: {', '.join(missing_tutor)}"
             )
 
-    # Rest of your code remains the same until the INSERT statement
     hashed_password = get_password_hash(user_data['password'])
     conn = get_db_connection()
     cursor = conn.cursor()
-
     try:
         if user_data['user_type'] == 'tutor':
             cursor.execute("""
-                INSERT INTO tutors 
-                (email, password_hash, first_name, last_name, subject, profile_title,
-                 hourly_rate, bio, profile_picture_url, verification_status, 
-                 rating, total_reviews, balance, is_active)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO users 
+                (email, password_hash, first_name, last_name, user_type,
+                 subject, profile_title, hourly_rate, bio, profile_picture_url, 
+                 verification_status, rating, total_reviews, balance, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 user_data['email'],
                 hashed_password,
                 user_data['first_name'],
                 user_data['last_name'],
+                'tutor',
                 user_data['subject'],
-                user_data['title'],           # maps to profile_title in DB
-                float(user_data['price']),    # maps to hourly_rate in DB
-                user_data['description'],    # maps to bio in DB
+                user_data['title'],
+                float(user_data['price']),
+                user_data['description'],
                 '/uploads/default_pfp.webp',
                 'unverified',
                 0.00,
@@ -324,16 +303,16 @@ async def register_user(user_data: dict):
                 True
             ))
         else:
-            # Student registration remains unchanged
             cursor.execute("""
-                INSERT INTO students 
-                (email, password_hash, first_name, last_name) 
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO users 
+                (email, password_hash, first_name, last_name, user_type) 
+                VALUES (%s, %s, %s, %s, %s)
             """, (
                 user_data['email'], 
                 hashed_password, 
                 user_data['first_name'], 
-                user_data['last_name']
+                user_data['last_name'],
+                'student'
             ))
 
         conn.commit()
@@ -344,22 +323,19 @@ async def register_user(user_data: dict):
     finally:
         cursor.close()
         conn.close()
+
 @app.get("/users/me")
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute(f"SELECT * FROM {current_user.user_type}s WHERE id = %s", (current_user.id,))
+        cursor.execute("SELECT * FROM users WHERE id = %s", (current_user.id,))
         user_data = cursor.fetchone()
         if not user_data:
             raise HTTPException(status_code=404, detail="User details not found")
         
         # Remove sensitive data
         user_data.pop('password_hash', None)
-        
-        # Add user type
-        user_data['user_type'] = current_user.user_type
-        
         return user_data
     finally:
         cursor.close()
@@ -370,21 +346,18 @@ async def upload_profile_picture(
     file: UploadFile = File(...),
     current_user: UserInDB = Depends(get_current_active_user)
 ):
-    # Generate unique filename using timestamp and original filename
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_")
     filename = timestamp + file.filename
     file_path = os.path.join(UPLOAD_FOLDER, filename)
     
-    # Save the file
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    # Update the database with the new profile picture URL
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            f"UPDATE {current_user.user_type}s SET profile_picture_url = %s WHERE id = %s",
+            "UPDATE users SET profile_picture_url = %s WHERE id = %s",
             (f"/uploads/{filename}", current_user.id)
         )
         conn.commit()
@@ -399,6 +372,7 @@ async def upload_profile_picture(
 @app.get("/balance")
 async def get_user_balance(current_user: UserInDB = Depends(get_current_active_user)):
     return {"balance": current_user.balance}
+
 @app.get("/users/bio")
 async def get_own_bio(current_user: UserInDB = Depends(get_current_active_user)):
     if current_user.user_type != "tutor":
@@ -407,7 +381,7 @@ async def get_own_bio(current_user: UserInDB = Depends(get_current_active_user))
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT bio FROM tutors WHERE id = %s", (current_user.id,))
+        cursor.execute("SELECT bio FROM users WHERE id = %s AND user_type = 'tutor'", (current_user.id,))
         result = cursor.fetchone()
         if not result:
             raise HTTPException(status_code=404, detail="Tutor not found")
@@ -416,21 +390,18 @@ async def get_own_bio(current_user: UserInDB = Depends(get_current_active_user))
         cursor.close()
         conn.close()
 
-
 @app.post("/users/change_bio")
 async def change_own_bio(
     bio_data: BioUpdate,
     current_user: UserInDB = Depends(get_current_active_user)
 ):
-    print("Hi", flush=True)
-    logger.info(f"User type: {current_user.user_type}") 
     if current_user.user_type != "tutor":
         raise HTTPException(status_code=403, detail="Only tutors can update their bio")
 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("UPDATE tutors SET bio = %s WHERE id = %s", (bio_data.bio, current_user.id))
+        cursor.execute("UPDATE users SET bio = %s WHERE id = %s", (bio_data.bio, current_user.id))
         conn.commit()
         return {"message": "Bio updated successfully"}
     except Error as e:
@@ -439,29 +410,13 @@ async def change_own_bio(
     finally:
         cursor.close()
         conn.close()
-@app.get("/users/bio")
-async def get_own_bio(current_user: UserInDB = Depends(get_current_active_user)):
-    if current_user.user_type != "tutor":
-        raise HTTPException(status_code=403, detail="Only tutors have a bio")
 
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        cursor.execute("SELECT bio FROM tutors WHERE id = %s", (current_user.id,))
-        result = cursor.fetchone()
-        if not result:
-            raise HTTPException(status_code=404, detail="Tutor not found")
-        return {"bio": result["bio"]}
-    finally:
-        cursor.close()
-        conn.close()
 @app.post("/generate-jitsi-token")
 async def generate_jitsi_token(
     current_user: UserInDB = Depends(get_current_active_user)
 ):
-    room = secrets.token_hex(16)  # Generate a random room name (removed trailing comma)
+    room = secrets.token_hex(16)
     now = datetime.utcnow() + timedelta(hours=3)
-    print(now + timedelta(minutes=JWT_EXPIRE_MINUTES), flush=True)
     expire = now + timedelta(minutes=JWT_EXPIRE_MINUTES)
     
     payload = {
@@ -471,7 +426,7 @@ async def generate_jitsi_token(
         "iss": JWT_APP_ID,
         "sub": "*",
         "room": "*",
-        "iat": int(now.timestamp()),  # Issued At: Time the token was generated
+        "iat": int(now.timestamp()),
         "nbf": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=JWT_EXPIRE_MINUTES)).timestamp()),
         "context": {
@@ -482,15 +437,10 @@ async def generate_jitsi_token(
     }
 
     token = jwt.encode(payload, JWT_APP_SECRET, algorithm=JWT_ALGORITHM)
-    print(payload, flush=True)
     return {"jitsi_token": token, "room": room}
 
-from fastapi import Query
-
-# Add these endpoints to your FastAPI app
 @app.get("/tutors/subjects", response_model=list[str])
 async def get_all_subjects():
-    """Return all available subjects for tutors"""
     return [
         'Математика',
         'Български език',
@@ -529,48 +479,44 @@ async def search_tutors(
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # Modified query to include t.rating
         query = """
             SELECT 
-                t.id,
-                CONCAT(t.first_name, ' ', t.last_name) as name,
-                t.subject,
-                t.rating,
-                t.hourly_rate as price,
-                COALESCE(t.profile_picture_url, '/uploads/default_pfp.webp') as image,
-                COALESCE(t.bio, '') as description
-            FROM tutors t
-            WHERE t.is_active = TRUE
+                id,
+                CONCAT(first_name, ' ', last_name) as name,
+                subject,
+                rating,
+                hourly_rate as price,
+                COALESCE(profile_picture_url, '/uploads/default_pfp.webp') as image,
+                COALESCE(bio, '') as description
+            FROM users
+            WHERE is_active = TRUE AND user_type = 'tutor'
         """
         
-        # Add filters
         params = []
         conditions = []
         
         if search_term:
             conditions.append("""
-                (CONCAT(t.first_name, ' ', t.last_name) LIKE %s 
-                OR t.subject LIKE %s)
+                (CONCAT(first_name, ' ', last_name) LIKE %s 
+                OR subject LIKE %s)
             """)
             params.extend([f"%{search_term}%", f"%{search_term}%"])
         
         if subject:
-            conditions.append("t.subject = %s")
+            conditions.append("subject = %s")
             params.append(subject)
         
         if max_price:
-            conditions.append("t.hourly_rate <= %s")
+            conditions.append("hourly_rate <= %s")
             params.append(max_price)
         
         if conditions:
             query += " AND " + " AND ".join(conditions)
         
-        # Sort by price only
-        query += " ORDER BY t.hourly_rate ASC"
+        query += " ORDER BY hourly_rate ASC"
         
         cursor.execute(query, params)
         tutors = cursor.fetchall()
-        
         return tutors
         
     except Error as e:
@@ -578,31 +524,31 @@ async def search_tutors(
     finally:
         cursor.close()
         conn.close()
+
 @app.get("/tutors/{tutor_id}", response_model=Tutor)
 async def get_tutor_details(
     tutor_id: int,
     current_user: UserInDB = Depends(get_current_active_user)
 ):
-    """Get detailed information about a specific tutor"""
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
     try:
         cursor.execute("""
             SELECT 
-                t.id,
-                CONCAT(t.first_name, ' ', t.last_name) as name,
-                t.subject,
-                t.rating,
-                t.hourly_rate as price,
-                COALESCE(t.profile_picture_url, '/uploads/default_pfp.webp') as image,
-                COALESCE(t.bio, '') as description,
-                t.profile_title,
-                t.video_intro_url,
-                t.verification_status,
-                t.total_reviews
-            FROM tutors t
-            WHERE t.id = %s AND t.is_active = TRUE
+                id,
+                CONCAT(first_name, ' ', last_name) as name,
+                subject,
+                rating,
+                hourly_rate as price,
+                COALESCE(profile_picture_url, '/uploads/default_pfp.webp') as image,
+                COALESCE(bio, '') as description,
+                profile_title,
+                video_intro_url,
+                verification_status,
+                total_reviews
+            FROM users
+            WHERE id = %s AND is_active = TRUE AND user_type = 'tutor'
         """, (tutor_id,))
         
         tutor = cursor.fetchone()
@@ -629,8 +575,11 @@ async def start_conversation(
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # Check if tutor exists
-        cursor.execute("SELECT id FROM tutors WHERE id = %s AND is_active = TRUE", (tutor_id,))
+        # Check if tutor exists and is actually a tutor
+        cursor.execute("""
+            SELECT id FROM users 
+            WHERE id = %s AND is_active = TRUE AND user_type = 'tutor'
+        """, (tutor_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Tutor not found")
         
@@ -642,7 +591,6 @@ async def start_conversation(
         existing = cursor.fetchone()
         
         if existing:
-            # Return existing conversation
             cursor.execute("""
                 SELECT * FROM conversations 
                 WHERE id = %s
@@ -656,7 +604,6 @@ async def start_conversation(
         """, (tutor_id, current_user.id))
         conn.commit()
         
-        # Return the new conversation
         cursor.execute("""
             SELECT * FROM conversations 
             WHERE id = LAST_INSERT_ID()
@@ -679,45 +626,43 @@ async def get_user_conversations(
     
     try:
         if current_user.user_type == "tutor":
-            # Get all conversations for tutor with last message
             cursor.execute("""
                 SELECT c.*, 
                        (SELECT COUNT(*) FROM messages m 
                         WHERE m.conversation_id = c.id AND m.is_read = FALSE 
-                        AND m.sender_type = 'student') as unread_count,
+                        AND m.sender_id = c.student_id) as unread_count,
                        (SELECT m.content FROM messages m 
                         WHERE m.conversation_id = c.id 
                         ORDER BY m.sent_at DESC LIMIT 1) as last_message_content,
                        (SELECT m.sent_at FROM messages m 
                         WHERE m.conversation_id = c.id 
                         ORDER BY m.sent_at DESC LIMIT 1) as last_message_time,
-                       s.first_name as student_first_name,
-                       s.last_name as student_last_name,
-                       s.profile_picture_url as student_image
+                       u.first_name as student_first_name,
+                       u.last_name as student_last_name,
+                       u.profile_picture_url as student_image
                 FROM conversations c
-                JOIN students s ON c.student_id = s.id
+                JOIN users u ON c.student_id = u.id
                 WHERE c.tutor_id = %s
                 ORDER BY c.updated_at DESC
             """, (current_user.id,))
         else:
-            # Get all conversations for student with last message
             cursor.execute("""
                 SELECT c.*, 
                        (SELECT COUNT(*) FROM messages m 
                         WHERE m.conversation_id = c.id AND m.is_read = FALSE 
-                        AND m.sender_type = 'tutor') as unread_count,
+                        AND m.sender_id = c.tutor_id) as unread_count,
                        (SELECT m.content FROM messages m 
                         WHERE m.conversation_id = c.id 
                         ORDER BY m.sent_at DESC LIMIT 1) as last_message_content,
                        (SELECT m.sent_at FROM messages m 
                         WHERE m.conversation_id = c.id 
                         ORDER BY m.sent_at DESC LIMIT 1) as last_message_time,
-                       t.first_name as tutor_first_name,
-                       t.last_name as tutor_last_name,
-                       t.profile_picture_url as tutor_image,
-                       t.subject as tutor_subject
+                       u.first_name as tutor_first_name,
+                       u.last_name as tutor_last_name,
+                       u.profile_picture_url as tutor_image,
+                       u.subject as tutor_subject
                 FROM conversations c
-                JOIN tutors t ON c.tutor_id = t.id
+                JOIN users u ON c.tutor_id = u.id
                 WHERE c.student_id = %s
                 ORDER BY c.updated_at DESC
             """, (current_user.id,))
@@ -740,7 +685,6 @@ async def get_conversation_messages(
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # Verify user has access to the conversation
         cursor.execute("""
             SELECT * FROM conversations 
             WHERE id = %s AND (tutor_id = %s OR student_id = %s)
@@ -748,22 +692,27 @@ async def get_conversation_messages(
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Conversation not found")
         
-        # Get messages and fetch results immediately
         cursor.execute("""
             SELECT * FROM messages 
             WHERE conversation_id = %s
             ORDER BY sent_at ASC
         """, (conversation_id,))
-        messages = cursor.fetchall()  # Fetch messages immediately after query
+        messages = cursor.fetchall()
         
-        cursor.execute("""
+        # Mark messages as read
+        if current_user.user_type == "tutor":
+            sender_condition = "sender_id = (SELECT student_id FROM conversations WHERE id = %s)"
+        else:
+            sender_condition = "sender_id = (SELECT tutor_id FROM conversations WHERE id = %s)"
+        
+        cursor.execute(f"""
             UPDATE messages 
             SET is_read = TRUE 
-            WHERE conversation_id = %s AND is_read = FALSE
-        """, (conversation_id,))
+            WHERE conversation_id = %s AND is_read = FALSE AND {sender_condition}
+        """, (conversation_id, conversation_id))
         conn.commit()
         
-        return messages  # Return the pre-fetched messages
+        return messages
         
     except Error as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -781,7 +730,6 @@ async def send_message(
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # Verify user has access to this conversation
         cursor.execute("""
             SELECT * FROM conversations 
             WHERE id = %s AND (tutor_id = %s OR student_id = %s)
@@ -790,13 +738,13 @@ async def send_message(
         if not conv:
             raise HTTPException(status_code=404, detail="Conversation not found")
         
-        # Insert message
-        cursor.execute("""
-            INSERT INTO messages (conversation_id, sender_id, sender_type, content)
-            VALUES (%s, %s, %s, %s)
-        """, (conversation_id, current_user.id, current_user.user_type, message.content))
+        recipient_id = conv['tutor_id'] if current_user.user_type == 'student' else conv['student_id']
         
-        # Update conversation timestamp
+        cursor.execute("""
+            INSERT INTO messages (conversation_id, sender_id, content)
+            VALUES (%s, %s, %s)
+        """, (conversation_id, current_user.id, message.content))
+        
         cursor.execute("""
             UPDATE conversations 
             SET updated_at = NOW() 
@@ -805,20 +753,26 @@ async def send_message(
         
         conn.commit()
         
-        # Return the new message
         cursor.execute("""
             SELECT * FROM messages 
             WHERE id = LAST_INSERT_ID()
         """)
         new_message = cursor.fetchone()
-        recipient_id = conv['tutor_id'] if current_user.user_type == 'student' else conv['student_id']
+        
+        message_data = {
+            "type": "new_message",
+            "conversation_id": conversation_id,
+            "message": {
+                "id": new_message['id'],
+                "content": new_message['content'],
+                "sender_id": new_message['sender_id'],
+                "sent_at": new_message['sent_at'].isoformat(),
+                "is_read": new_message['is_read']
+            }
+        }
+        
         await manager.send_personal_message(
-            json.dumps({
-                "type": "new_message",
-                "conversation_id": conversation_id,
-                "sender_id": current_user.id,
-                "content": message.content
-            }),
+            json.dumps(message_data),
             recipient_id
         )
         
@@ -844,14 +798,14 @@ async def get_unread_count(
                 SELECT COUNT(*) as count
                 FROM messages m
                 JOIN conversations c ON m.conversation_id = c.id
-                WHERE c.tutor_id = %s AND m.sender_type = 'student' AND m.is_read = FALSE
+                WHERE c.tutor_id = %s AND m.sender_id = c.student_id AND m.is_read = FALSE
             """, (current_user.id,))
         else:
             cursor.execute("""
                 SELECT COUNT(*) as count
                 FROM messages m
                 JOIN conversations c ON m.conversation_id = c.id
-                WHERE c.student_id = %s AND m.sender_type = 'tutor' AND m.is_read = FALSE
+                WHERE c.student_id = %s AND m.sender_id = c.tutor_id AND m.is_read = FALSE
             """, (current_user.id,))
         
         result = cursor.fetchone()
