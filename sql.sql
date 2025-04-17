@@ -1,71 +1,52 @@
+-- Create the database
 CREATE DATABASE IF NOT EXISTS website_db;
+
+-- Select the database for use
 USE website_db;
 
-DROP TABLE classroom_sessions;
-DROP TABLE tutors;
-DROP TABLE students;
-
-CREATE TABLE tutors (
+-- USERS table
+CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    first_name VARCHAR(50) NOT NULL,
-    last_name VARCHAR(50) NOT NULL,
-    email VARCHAR(100) NOT NULL UNIQUE,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    subject VARCHAR(100) NOT NULL,
-    profile_title VARCHAR(100),
+    user_type ENUM('tutor', 'student') NOT NULL,
+    profile_picture_url TEXT,
+    balance DECIMAL(10, 2) DEFAULT 0.00,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    last_login_at DATETIME,
+    is_active BOOLEAN DEFAULT TRUE,
+    subject VARCHAR(255),
+    profile_title VARCHAR(255),
     bio TEXT,
     hourly_rate DECIMAL(10, 2),
-    profile_picture_url VARCHAR(255) DEFAULT '/uploads/default_pfp.webp',
-    video_intro_url VARCHAR(255),
-    verification_status ENUM('unverified', 'pending', 'verified') DEFAULT 'unverified',
-    rating DECIMAL(3, 2) DEFAULT 0.00,
-    total_reviews INT DEFAULT 0,
-    balance DECIMAL(10, 2) DEFAULT 0.00,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    last_login_at TIMESTAMP NULL,
-    is_active BOOLEAN DEFAULT TRUE
+    video_intro_url TEXT,
+    verification_status ENUM('pending', 'verified', 'rejected') DEFAULT 'pending',
+    rating DECIMAL(3, 2),
+    total_reviews INT DEFAULT 0
 );
 
-CREATE TABLE students (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    first_name VARCHAR(50) NOT NULL,
-    last_name VARCHAR(50) NOT NULL,
-    email VARCHAR(100) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    profile_picture_url VARCHAR(255) DEFAULT '/uploads/default_pfp.webp',
-    balance DECIMAL(10, 2) DEFAULT 0.00,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    last_login_at TIMESTAMP NULL,
-    is_active BOOLEAN DEFAULT TRUE
-);
-
+-- CONVERSATIONS table
 CREATE TABLE conversations (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tutor_id INT NOT NULL,
     student_id INT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (tutor_id) REFERENCES tutors(id) ON DELETE CASCADE,
-    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_conversation (tutor_id, student_id)
+    FOREIGN KEY (tutor_id) REFERENCES users(id),
+    FOREIGN KEY (student_id) REFERENCES users(id)
 );
 
+-- MESSAGES table
 CREATE TABLE messages (
     id INT AUTO_INCREMENT PRIMARY KEY,
     conversation_id INT NOT NULL,
     sender_id INT NOT NULL,
-    sender_type ENUM('tutor', 'student') NOT NULL,
     content TEXT NOT NULL,
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_read BOOLEAN DEFAULT FALSE,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_id) REFERENCES users(id)
 );
-SELECT * FROM tutors;
-SELECT * FROM students;
-SELECT * FROM classroom_sessions;
-DROP TABLE messages;
-INSERT INTO conversations (tutor_id, student_id) VALUES (1, 1);
-
-SELECT * FROM conversations;
