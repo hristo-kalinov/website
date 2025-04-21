@@ -63,10 +63,15 @@ class Conversation(BaseModel):
     student_id: int
     created_at: datetime
     updated_at: datetime
-    last_message: Optional[Message] = None
+    last_message: Optional[str] = None  # if used
+    unread_count: Optional[int] = None
+    last_message_content: Optional[str] = None
+    last_message_time: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    # Fields from JOINs
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    image: Optional[str] = None
 
 JWT_APP_ID = "your_app_id"
 JWT_APP_SECRET = "your_strong_secret_key"
@@ -578,7 +583,7 @@ async def start_conversation(
         # Check if tutor exists and is actually a tutor
         cursor.execute("""
             SELECT id FROM users 
-            WHERE id = %s AND is_active = TRUE AND user_type = 'tutor'
+            WHERE id = %s AND user_type = 'tutor'
         """, (tutor_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Tutor not found")
@@ -623,7 +628,7 @@ async def get_user_conversations(
 ):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    
+
     try:
         if current_user.user_type == "tutor":
             cursor.execute("""
@@ -637,9 +642,9 @@ async def get_user_conversations(
                        (SELECT m.sent_at FROM messages m 
                         WHERE m.conversation_id = c.id 
                         ORDER BY m.sent_at DESC LIMIT 1) as last_message_time,
-                       u.first_name as student_first_name,
-                       u.last_name as student_last_name,
-                       u.profile_picture_url as student_image
+                       u.first_name as first_name,
+                       u.last_name as last_name,
+                       u.profile_picture_url as image
                 FROM conversations c
                 JOIN users u ON c.student_id = u.id
                 WHERE c.tutor_id = %s
@@ -657,10 +662,9 @@ async def get_user_conversations(
                        (SELECT m.sent_at FROM messages m 
                         WHERE m.conversation_id = c.id 
                         ORDER BY m.sent_at DESC LIMIT 1) as last_message_time,
-                       u.first_name as tutor_first_name,
-                       u.last_name as tutor_last_name,
-                       u.profile_picture_url as tutor_image,
-                       u.subject as tutor_subject
+                       u.first_name as first_name,
+                       u.last_name as last_name,
+                       u.profile_picture_url as image
                 FROM conversations c
                 JOIN users u ON c.tutor_id = u.id
                 WHERE c.student_id = %s
@@ -669,7 +673,7 @@ async def get_user_conversations(
         
         conversations = cursor.fetchall()
         return conversations
-        
+
     except Error as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
