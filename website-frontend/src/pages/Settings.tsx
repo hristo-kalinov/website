@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { AuthenticatedLayout } from './Dashboard';
 import { Bell, Lock, User, Mail } from 'lucide-react';
 
 function SettingsSection({ title, description, children }) {
@@ -22,7 +21,6 @@ function Settings() {
   const [marketingEmails, setMarketingEmails] = useState(true);
 
   return (
-    <AuthenticatedLayout>
       <div className="space-y-6">
         <div className="max-w-3xl mx-auto space-y-6">
           <SettingsSection
@@ -135,7 +133,6 @@ function Settings() {
           </button>
         </div>
       </div>
-    </AuthenticatedLayout>
   );
 }
 

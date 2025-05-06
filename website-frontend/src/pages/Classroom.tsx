@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { AuthenticatedLayout } from './Dashboard';
 
 function Classroom() {
   const [loading, setLoading] = useState(false);
@@ -44,7 +43,6 @@ function Classroom() {
   };
 
   return (
-    <AuthenticatedLayout>
       <div className="p-4">
         <h1 className="text-2xl font-bold mb-4">Virtual Classroom</h1>
 
@@ -70,7 +68,6 @@ function Classroom() {
           <div className="mt-4 text-red-600">{error}</div>
         )}
       </div>
-    </AuthenticatedLayout>
   );
 }
 

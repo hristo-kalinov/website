@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { AuthenticatedLayout } from './Dashboard';
 import { Search, Sliders, Check } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom'; // Import useNavigate
 
@@ -99,7 +98,6 @@ function TutorSearch() {
   }, [searchTerm, selectedSubject, priceRange, navigate]); // Add navigate to dependency array
 
   return (
-    <AuthenticatedLayout>
       <div className="space-y-6">
         {/* Search Header */}
         <div className="flex items-center space-x-4">
@@ -212,8 +210,8 @@ function TutorSearch() {
             {tutors.length > 0 ? (
               tutors.map((tutor) => (
                 <Link
-                  to={`${tutor.id}`}
-                  key={tutor.id}
+                  to={`${tutor.public_id}`}
+                  key={tutor.public_id}
                   className="block bg-white p-6 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-start space-x-4">
@@ -241,13 +239,12 @@ function TutorSearch() {
                 </Link>))
             ) : (
               <div className="col-span-2 text-center py-8">
-                <p className="text-gray-500">Няма намерени репетитори с избраните филтри</p>
+                <p className="text-gray-500">Няма намерени учители с избраните филтри</p>
               </div>
             )}
           </div>
         )}
       </div>
-    </AuthenticatedLayout>
   );
 }
 

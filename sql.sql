@@ -50,3 +50,16 @@ CREATE TABLE messages (
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
     FOREIGN KEY (sender_id) REFERENCES users(id)
 );
+
+CREATE TABLE tutor_availability (
+    id SERIAL PRIMARY KEY,
+    tutor_id INTEGER NOT NULL,
+    day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+    time_slot INTEGER NOT NULL,
+    is_available BOOLEAN NOT NULL DEFAULT true,
+    CONSTRAINT unique_tutor_time_slot UNIQUE (tutor_id, day_of_week, time_slot)
+);
+SELECT * from users;
+DROP TABLE appointments;
+SHOW TABLES;
+SELECT * FROM tutor_availability;

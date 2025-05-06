@@ -19,6 +19,8 @@ import secrets
 import json
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import Query
+import uuid
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[int, WebSocket] = {}
@@ -94,6 +96,7 @@ class TokenData(BaseModel):
 
 class UserInDB(BaseModel):
     id: int
+    public_id: str
     email: str
     password_hash: str
     user_type: str  # 'tutor' or 'student'
@@ -116,14 +119,14 @@ class UserInDB(BaseModel):
     rating: Optional[float] = None
     total_reviews: Optional[int] = None
 
-    class Config:
+class Config:
         from_attributes = True
 
 class BioUpdate(BaseModel):
     bio: str
 
 class Tutor(BaseModel):
-    id: int
+    public_id: str
     name: str
     subject: str
     rating: float
@@ -137,6 +140,14 @@ class TutorSearchFilters(BaseModel):
     max_price: Optional[float] = None
     min_rating: Optional[float] = None
 
+class AvailabilitySlot(BaseModel):
+    day: int  # 0-6 (Monday-Sunday)
+    slots: list[int]  # List of 30-minute slot indices (0-47)
+
+class AvailabilityUpdate(BaseModel):
+    availability: list[AvailabilitySlot]
+class AvailabilityRequest(BaseModel):
+    tutor_id: str
 # Initialize FastAPI app
 app = FastAPI()
 
@@ -147,7 +158,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
         while True:
             await websocket.receive_text()  # keep alive
     except WebSocketDisconnect:
-        await manager.disconnect(websocket, user_id)
+        await manager.disconnect(user_id)
 
 app.add_middleware(
     CORSMiddleware,
@@ -280,17 +291,19 @@ async def register_user(user_data: dict):
             )
 
     hashed_password = get_password_hash(user_data['password'])
+    public_id = str(uuid.uuid4())  # Generate a new UUID for public_id
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         if user_data['user_type'] == 'tutor':
             cursor.execute("""
                 INSERT INTO users 
-                (email, password_hash, first_name, last_name, user_type,
-                 subject, profile_title, hourly_rate, bio, profile_picture_url, 
-                 verification_status, rating, total_reviews, balance, is_active)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (public_id, email, password_hash, first_name, last_name, user_type,
+                subject, profile_title, bio, hourly_rate, profile_picture_url, 
+                verification_status, rating, total_reviews, balance, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
+                public_id,
                 user_data['email'],
                 hashed_password,
                 user_data['first_name'],
@@ -298,8 +311,8 @@ async def register_user(user_data: dict):
                 'tutor',
                 user_data['subject'],
                 user_data['title'],
-                float(user_data['price']),
                 user_data['description'],
+                float(user_data['price']),
                 '/uploads/default_pfp.webp',
                 'unverified',
                 0.00,
@@ -310,25 +323,26 @@ async def register_user(user_data: dict):
         else:
             cursor.execute("""
                 INSERT INTO users 
-                (email, password_hash, first_name, last_name, user_type) 
-                VALUES (%s, %s, %s, %s, %s)
+                (public_id, email, password_hash, first_name, last_name, user_type, profile_picture_url) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (
+                public_id,
                 user_data['email'], 
                 hashed_password, 
                 user_data['first_name'], 
                 user_data['last_name'],
-                'student'
+                'student',
+                '/uploads/default_pfp.webp'  # Default profile picture for students
             ))
 
         conn.commit()
-        return {"message": "User created successfully"}
+        return {"message": "User created successfully", "public_id": public_id}
     except Error as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         cursor.close()
         conn.close()
-
 @app.get("/users/me")
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
     conn = get_db_connection()
@@ -486,7 +500,7 @@ async def search_tutors(
     try:
         query = """
             SELECT 
-                id,
+                public_id,
                 CONCAT(first_name, ' ', last_name) as name,
                 subject,
                 rating,
@@ -530,18 +544,18 @@ async def search_tutors(
         cursor.close()
         conn.close()
 
-@app.get("/tutors/{tutor_id}", response_model=Tutor)
+@app.get("/tutors/{public_id}", response_model=Tutor)
 async def get_tutor_details(
-    tutor_id: int,
+    public_id: str,
     current_user: UserInDB = Depends(get_current_active_user)
 ):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    
+
     try:
         cursor.execute("""
             SELECT 
-                id,
+                public_id,
                 CONCAT(first_name, ' ', last_name) as name,
                 subject,
                 rating,
@@ -553,24 +567,24 @@ async def get_tutor_details(
                 verification_status,
                 total_reviews
             FROM users
-            WHERE id = %s AND is_active = TRUE AND user_type = 'tutor'
-        """, (tutor_id,))
+            WHERE public_id = %s AND is_active = TRUE AND user_type = 'tutor'
+        """, (public_id,))
         
         tutor = cursor.fetchone()
         if not tutor:
             raise HTTPException(status_code=404, detail="Tutor not found")
         
         return tutor
-        
+
     except Error as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         cursor.close()
         conn.close()
 
-@app.post("/conversations/start/{tutor_id}", response_model=Conversation)
+@app.post("/conversations/start/{public_id}", response_model=Conversation)
 async def start_conversation(
-    tutor_id: int,
+    public_id: str,
     current_user: UserInDB = Depends(get_current_active_user)
 ):
     if current_user.user_type != "student":
@@ -580,13 +594,17 @@ async def start_conversation(
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # Check if tutor exists and is actually a tutor
+        # First get the tutor's real ID from their public_id
         cursor.execute("""
             SELECT id FROM users 
-            WHERE id = %s AND user_type = 'tutor'
-        """, (tutor_id,))
-        if not cursor.fetchone():
+            WHERE public_id = %s AND user_type = 'tutor'
+        """, (public_id,))
+        tutor = cursor.fetchone()
+        
+        if not tutor:
             raise HTTPException(status_code=404, detail="Tutor not found")
+        
+        tutor_id = tutor['id']
         
         # Check if conversation already exists
         cursor.execute("""
@@ -817,6 +835,107 @@ async def get_unread_count(
         
     except Error as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+@app.post("/save-availability")
+async def save_availability(
+    availability_data: AvailabilityUpdate,
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    if current_user.user_type != "tutor":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only tutors can set availability"
+        )
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Step 1: Fetch existing availability
+        cursor.execute(
+            "SELECT day_of_week, time_slot FROM tutor_availability WHERE tutor_id = %s",
+            (current_user.id,)
+        )
+        existing_slots = set(cursor.fetchall())  # Set of tuples (day, slot)
+
+        # Step 2: Build new slots set
+        new_slots = set()
+        for day_slots in availability_data.availability:
+            for slot in day_slots.slots:
+                if not (0 <= day_slots.day <= 6 and 0 <= slot <= 47):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Invalid slot: day {day_slots.day}, slot {slot}"
+                    )
+                new_slots.add((day_slots.day, slot))
+
+        # Step 3: Determine which slots to insert and delete
+        slots_to_add = new_slots - existing_slots
+        slots_to_remove = existing_slots - new_slots
+
+        # Step 4: Perform deletions
+        for day, slot in slots_to_remove:
+            cursor.execute(
+                """
+                DELETE FROM tutor_availability 
+                WHERE tutor_id = %s AND day_of_week = %s AND time_slot = %s
+                """,
+                (current_user.id, day, slot)
+            )
+
+        # Step 5: Perform insertions
+        for day, slot in slots_to_add:
+            cursor.execute(
+                """
+                INSERT INTO tutor_availability 
+                (tutor_id, day_of_week, time_slot, is_available)
+                VALUES (%s, %s, %s, TRUE)
+                """,
+                (current_user.id, day, slot)
+            )
+
+        conn.commit()
+        return {"message": "Availability updated successfully"}
+
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error"
+        )
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/get-availability")
+async def get_availability(
+    tutor: AvailabilityRequest
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute(
+            "SELECT id FROM users WHERE public_id = %s",
+            (tutor.tutor_id,)
+        )
+        result = cursor.fetchone()
+        id = result['id']
+        print(f"ID: {id}", flush=True)
+        cursor.execute(
+            "SELECT day_of_week, time_slot FROM tutor_availability WHERE tutor_id = %s",
+            (id,)
+        )
+        slots = cursor.fetchall()
+        return {"availability": slots}
+
+    except Error as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error"
+        )
     finally:
         cursor.close()
         conn.close()

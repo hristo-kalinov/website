@@ -7,141 +7,8 @@ import {
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useRef } from 'react';
-
 interface UserData {
   id: number; email: string; first_name: string; last_name: string; subject?: string; profile_title?: string; bio?: string | null; hourly_rate?: number; profile_picture_url?: string | null; video_intro_url?: string | null; verification_status?: 'unverified' | 'pending' | 'verified'; rating?: number; total_reviews?: number; created_at: string; updated_at: string; last_login_at?: string | null; is_active: boolean; user_type: 'tutor' | 'student';
-}
-
-function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  const navItems = [
-    { icon: HomeIcon, label: 'Начало', path: '/dashboard' },
-    { icon: MessageSquare, label: 'Съобщения', path: '/messages' },
-    { icon: BookOpen, label: 'Класна стая', path: '/classroom' },
-    { icon: Settings, label: 'Настройки', path: '/settings' },
-  ];
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    window.location.reload();
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      {/* Top Navigation */}
-      <div className="bg-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-20 items-center">
-            <Link to="/dashboard" className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-600 rounded-lg shadow-md">
-                <GraduationCap className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                УчиОнлайн
-              </span>
-            </Link>
-
-            {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center space-x-8">
-              {navItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`group flex items-center space-x-1.5 text-sm font-medium transition-colors ${location.pathname === item.path ? 'text-blue-600' : 'text-gray-600 hover:text-blue-500'
-                    }`}
-                >
-                  <div className={`p-1.5 rounded-lg group-hover:bg-blue-50 ${location.pathname === item.path ? 'bg-blue-50' : ''
-                    }`}>
-                    <item.icon className="w-5 h-5" />
-                  </div>
-                  <span>{item.label}</span>
-                </Link>
-              ))}
-
-              <div className="flex items-center space-x-4 ml-4">
-                <button
-                  onClick={() => navigate('/tutors')}
-                  className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-4 py-2.5 rounded-xl text-white shadow-md hover:shadow-lg transition-all"
-                >
-                  <Search className="w-5 h-5" />
-                  <span className="font-medium">Търси преподаватели</span>
-                </button>
-
-                <button className="relative p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
-                  <Bell className="w-5 h-5 text-gray-700" />
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full">3</span>
-                </button>
-
-                <div className="w-px h-8 bg-gray-200"></div>
-
-                <button className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 transition-colors" onClick={handleLogout}>
-                  <div className="p-1.5 rounded-lg hover:bg-blue-50">
-                    <LogOut className="w-5 h-5" />
-                  </div>
-                  <span className="font-medium">Изход</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Mobile Navigation Button */}
-            <div className="flex md:hidden items-center space-x-4">
-              <button className="relative p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
-                <Bell className="w-5 h-5 text-gray-700" />
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full">3</span>
-              </button>
-
-              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                {isMobileMenuOpen ? (<X className="h-6 w-6" />) : (<Menu className="h-6 w-6" />)}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile Menu */}
-        {isMobileMenuOpen && (
-          <div className="md:hidden bg-white border-t border-gray-200 shadow-inner">
-            <div className="px-2 pt-2 pb-4 space-y-1">
-              {navItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg text-base font-medium transition-colors ${location.pathname === item.path ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                  <item.icon className="w-5 h-5" />
-                  <span>{item.label}</span>
-                </Link>
-              ))}
-
-              <button
-                onClick={() => { navigate('/tutors'); setIsMobileMenuOpen(false); }}
-                className="flex items-center justify-center space-x-2 w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg text-white text-base font-medium shadow-md"
-              >
-                <Search className="w-5 h-5" />
-                <span>Търси преподаватели</span>
-              </button>
-
-              <button className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 transition-colors" onClick={handleLogout}>
-                <div className="p-1.5 rounded-lg hover:bg-blue-50">
-                  <LogOut className="w-5 h-5" />
-                </div>
-                <span className="font-medium">Изход</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
-      </div>
-    </div>
-  );
 }
 
 export function BalanceButton() {
@@ -234,15 +101,12 @@ function Dashboard() {
 
   if (isLoading) {
     return (
-      <AuthenticatedLayout>
-        <div className="flex flex-col items-center justify-center h-96"><Loader2 className="w-12 h-12 animate-spin text-blue-600 mb-4" /><span className="text-lg font-medium text-gray-600">Зареждане на вашите данни...</span><span className="text-sm text-gray-500 mt-2">Моля, изчакайте</span></div>
-      </AuthenticatedLayout>
+      <div className="flex flex-col items-center justify-center h-96"><Loader2 className="w-12 h-12 animate-spin text-blue-600 mb-4" /><span className="text-lg font-medium text-gray-600">Зареждане на вашите данни...</span><span className="text-sm text-gray-500 mt-2">Моля, изчакайте</span></div>
     );
   }
 
   if (error) {
     return (
-      <AuthenticatedLayout>
         <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg shadow-sm">
           <div className="flex">
             <div className="flex-shrink-0"><svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg></div>
@@ -251,85 +115,213 @@ function Dashboard() {
             </div>
           </div>
         </div>
-      </AuthenticatedLayout>
     );
   }
 
   return (
-    <AuthenticatedLayout>
-      <div className="space-y-8">
-        {/* Welcome Banner */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl shadow-xl overflow-hidden">
-          <div className="p-6 md:p-8">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-              <div className="mb-4 md:mb-0">
-                <h1 className="text-2xl md:text-3xl font-bold text-white">
-                  {(() => { const hour = new Date().getHours(); return hour >= 5 && hour < 12 ? `Добро утро, ${userData?.first_name || 'Потребителю'}!` : hour >= 12 && hour < 18 ? `Добър ден, ${userData?.first_name || 'Потребителю'}!` : `Добър вечер, ${userData?.first_name || 'Потребителю'}!`; })()}
-                </h1>
-                <p className="mt-1 text-blue-100">{new Date().toLocaleDateString('bg-BG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column - Profile Section */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* Profile Card */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="flex flex-col items-center">
+              <div className="relative mb-4">
+                <img 
+                  src={`http://localhost:8001${userData?.profile_picture_url}` || '/default-avatar.png'} 
+                  alt="Profile" 
+                  className="h-32 w-32 rounded-full object-cover border-4 border-indigo-100"
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute bottom-0 right-0 bg-indigo-600 text-white p-2 rounded-full hover:bg-indigo-700 transition-colors"
+                >
+                  <Camera className="h-4 w-4" />
+                </button>
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  onChange={(e) => e.target.files?.[0] && handleProfilePictureUpload(e.target.files[0])}
+                  className="hidden"
+                  accept="image/*"
+                />
               </div>
-              <div className="flex space-x-3"><BalanceButton /></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Profile Section */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-          <div className="flex flex-col md:flex-row items-start space-y-6 md:space-y-0 md:space-x-8 p-6 md:p-8">
-            <div className="relative group">
-              <img src={userData?.profile_picture_url ? `http://localhost:8001${userData.profile_picture_url}` : "https://via.placeholder.com/160/E0E7FF/808080?text=No+Image"} alt="Profile" className="w-32 h-32 md:w-40 md:h-40 rounded-xl object-cover ring-4 ring-white shadow-lg" />
-              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleProfilePictureUpload(file); }} />
-              <button onClick={() => fileInputRef.current?.click()} className="absolute bottom-2 right-2 bg-white p-2 rounded-full shadow-lg hover:bg-gray-50 transition-colors group-hover:opacity-100 opacity-0">
-                <Camera className="w-5 h-5 text-gray-600" />
-              </button>
-            </div>
-
-            <div className="flex-1 w-full">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">{`${userData?.first_name || ''} ${userData?.last_name || ''}`}</h1>
-                  <p className="text-lg text-gray-600">{userData?.profile_title || (userData?.user_type === 'tutor' ? 'Преподавател' : 'Ученик')}</p>
-                  {userData?.user_type === 'tutor' && userData.verification_status === 'verified' && (
-                    <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                      <Star className="w-4 h-4 mr-1" />Верифициран преподавател
-                    </div>
-                  )}
-                </div>
-                <div className="mt-4 md:mt-0 flex items-center space-x-3">
-                  <button className="flex items-center space-x-2 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg text-blue-600 transition-colors">
-                    <Edit2 className="w-5 h-5" /><span>Редактирай профил</span>
-                  </button>
-                </div>
-              </div>
-
-              {userData?.user_type === 'tutor' && (
-                <div className="mt-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-gray-900">За мен</h2>
-                    {!isEditingBio && (<button onClick={() => { setTempBio(bio); setIsEditingBio(true); }} className="text-blue-600 hover:text-blue-700 transition-colors"><Edit2 className="w-5 h-5" /></button>)}
+              
+              <h2 className="text-xl font-bold text-gray-900">
+                {userData?.first_name} {userData?.last_name}
+              </h2>
+              
+              {userData?.profile_title && (
+                <p className="text-gray-600 mt-1">{userData.profile_title}</p>
+              )}
+              
+              {userData?.user_type === 'tutor' && userData?.rating && (
+                <div className="flex items-center mt-2">
+                  <div className="flex items-center">
+                    {[...Array(5)].map((_, i) => (
+                      <Star 
+                        key={i}
+                        className={`h-5 w-5 ${i < Math.floor(userData.rating) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
+                      />
+                    ))}
                   </div>
-                  {!isEditingBio ? (
-                    <div className="space-y-2">
-                      <p className="text-gray-600 whitespace-pre-line">{bio || 'Няма добавена биография все още.'}</p>
+                  <span className="ml-1 text-sm text-gray-600">
+                    ({userData.total_reviews} reviews)
+                  </span>
+                </div>
+              )}
+              
+              <div className="mt-4 w-full">
+                <h3 className="font-medium text-gray-900 mb-2">За мен</h3>
+                {isEditingBio ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={tempBio}
+                      onChange={(e) => setTempBio(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                      rows={4}
+                    />
+                    <div className="flex justify-end space-x-2">
+                      <button
+                        onClick={() => setIsEditingBio(false)}
+                        className="px-3 py-1.5 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                      >
+                        Отказ
+                      </button>
+                      <button
+                        onClick={handleSaveBio}
+                        className="px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                      >
+                        Запази
+                      </button>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <textarea value={tempBio} onChange={(e) => setTempBio(e.target.value)} placeholder="Добавете кратко описание за себе си..." className="w-full h-40 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 transition-all" />
-                      <div className="flex justify-end space-x-3">
-                        <button onClick={() => { setTempBio(bio); setIsEditingBio(false); }} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg border border-gray-300 transition-colors">Отказ</button>
-                        <button onClick={handleSaveBio} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">Запази промените</button>
-                      </div>
-                    </div>
-                  )}
+                  </div>
+                ) : (
+                  <div className="relative group">
+                    <p className="text-gray-600 whitespace-pre-line">
+                      {bio || "Няма въведена биография."}
+                    </p>
+                    <button
+                      onClick={() => setIsEditingBio(true)}
+                      className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-indigo-600 transition-opacity"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              {userData?.user_type === 'tutor' && (
+                <div className="mt-4 w-full">
+                  <h3 className="font-medium text-gray-900 mb-2">Цена за час</h3>
+                  <p className="text-gray-600">
+                    {userData.hourly_rate ? `${userData.hourly_rate.toFixed(2)} лв./час` : "Не е зададена"}
+                  </p>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Quick Stats */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h3 className="font-medium text-gray-900 mb-4">Статистика</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-indigo-50 p-3 rounded-lg">
+                <p className="text-sm text-indigo-600">Общо уроци</p>
+                <p className="text-2xl font-bold mt-1">24</p>
+              </div>
+              <div className="bg-green-50 p-3 rounded-lg">
+                <p className="text-sm text-green-600">Следващ урок</p>
+                <p className="text-2xl font-bold mt-1">{userData?.user_type === 'tutor' ? '3' : 'Петък'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column - Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Welcome Banner */}
+          <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 rounded-xl shadow-sm p-6 text-white">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold mb-1">Здравейте, {userData?.first_name}!</h2>
+                <p className="opacity-90">
+                  {userData?.user_type === 'tutor' 
+                    ? 'Готови ли сте за днешните уроци?' 
+                    : 'Какво ще учим днес?'}
+                </p>
+              </div>
+              <BalanceButton />
+            </div>
+          </div>
+
+          {/* Upcoming Sessions */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="font-medium text-gray-900">Предстоящи уроци</h3>
+              <Link to="/lessons" className="text-sm text-indigo-600 hover:text-indigo-800">
+                Виж всички
+              </Link>
+            </div>
+            <div className="p-6">
+              <div className="text-center py-8">
+                <Clock className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-3 text-lg font-medium text-gray-900">Няма предстоящи уроци</h3>
+                <p className="mt-1 text-gray-500">
+                  {userData?.user_type === 'tutor' 
+                    ? 'Когато имате записани уроци, те ще се появят тук.' 
+                    : 'Запишете се за урок с преподавател.'}
+                </p>
+                <div className="mt-6">
+                  <Link
+                    to={userData?.user_type === 'tutor' ? '/tutor/availability' : '/find-tutor'}
+                    className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  >
+                    <Plus className="-ml-1 mr-2 h-5 w-5" />
+                    {userData?.user_type === 'tutor' ? 'Добави свободни часове' : 'Намери преподавател'}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Activity */}
+          <div className="bg-white rounded-xl shadow-sm">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="font-medium text-gray-900">Скорошна активност</h3>
+              <Link to="/activity" className="text-sm text-indigo-600 hover:text-indigo-800">
+                Виж всички
+              </Link>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div className="flex items-start">
+                  <div className="flex-shrink-0 bg-indigo-100 p-2 rounded-full">
+                    <MessageSquare className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-gray-900">Ново съобщение</p>
+                    <p className="text-sm text-gray-500">От Иван Петров</p>
+                    <p className="text-xs text-gray-400 mt-1">Преди 2 часа</p>
+                  </div>
+                </div>
+                <div className="flex items-start">
+                  <div className="flex-shrink-0 bg-green-100 p-2 rounded-full">
+                    <BookOpen className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-gray-900">Записан урок</p>
+                    <p className="text-sm text-gray-500">Математика - 15 май</p>
+                    <p className="text-xs text-gray-400 mt-1">Преди 1 ден</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </AuthenticatedLayout>
+    </div>
   );
 }
 
 export default Dashboard;
-export { AuthenticatedLayout };

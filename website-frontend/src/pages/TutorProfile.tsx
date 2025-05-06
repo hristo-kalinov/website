@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { AuthenticatedLayout } from './Dashboard';
 import { Star, Clock, Calendar, MessageSquare, Video, Users, Award, BookOpen, Globe, CheckCircle, ThumbsUp, MapPin } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom'; // Import useNavigate
 
@@ -116,7 +115,6 @@ function TutorProfile() {
 
 
   return (
-    <AuthenticatedLayout>
       <div className="max-w-7xl mx-auto">
         {/* Hero Section */}
         <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-8 mb-8">
@@ -159,10 +157,13 @@ function TutorProfile() {
                 Свържи се
               </button>
 
-                <button className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors flex items-center">
-                  <Video className="w-5 h-5 mr-2" />
-                  Запази час
-                </button>
+                <button
+                onClick={() => window.location.href = `/book_lesson/${id}`}
+                className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors flex items-center"
+                >
+                <Video className="w-5 h-5 mr-2" />
+                Запази час
+                </button>
               </div>
             </div>
             {/* Rating & Reviews Badge */}
@@ -263,7 +264,6 @@ function TutorProfile() {
           </div>
         </div>
       </div>
-    </AuthenticatedLayout>
   );
 }
 

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AuthenticatedLayout } from './Dashboard'; // Assuming AuthenticatedLayout is in Dashboard.tsx
-import { Send, Search, MoreVertical, Phone, Video, ChevronLeft } from 'lucide-react'; // Keep Menu icon just in case, though not used in this specific mobile view
+import { Send, Search, ChevronLeft } from 'lucide-react'; // Keep Menu icon just in case, though not used in this specific mobile view
 import { useNavigate } from 'react-router-dom';
 
 // Helper function for authenticated fetch requests
@@ -243,11 +242,10 @@ function Messages() {
 
   // Render loading state or handle case where currentUser is null initially
   if (!currentUser) {
-      return (<AuthenticatedLayout><div className="flex items-center justify-center h-full">Loading...</div></AuthenticatedLayout>);
+      return (<div className="flex items-center justify-center h-full">Loading...</div>);
   }
 
   return (
-    <AuthenticatedLayout>
       <div className="flex h-[calc(100vh-12rem)] bg-white rounded-lg overflow-hidden shadow-sm relative">
         {/* Conversation List Sidebar (Mobile or Desktop) */}
         {(showSidebar || !isMobile) && (
@@ -296,9 +294,9 @@ function Messages() {
                     </div>
                   </div>
                   <div className="flex space-x-2">
-                    <button className="p-1 hover:bg-gray-100 rounded-full"><Phone className="w-5 h-5 text-gray-600" /></button>
-                    <button className="p-1 hover:bg-gray-100 rounded-full"><Video className="w-5 h-5 text-gray-600" /></button>
-                    <button className="p-1 hover:bg-gray-100 rounded-full"><MoreVertical className="w-5 h-5 text-gray-600" /></button>
+                    <button className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">
+                      Запази час
+                    </button>
                   </div>
                 </div>
 
@@ -336,7 +334,7 @@ function Messages() {
           </div>
         )}
       </div>
-    </AuthenticatedLayout>
+    
   );
 }
 
