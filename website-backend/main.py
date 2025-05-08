@@ -959,7 +959,7 @@ async def get_availability(
         id = result['id']
         print(f"ID: {id}", flush=True)
         cursor.execute(
-            "SELECT day_of_week, time_slot FROM tutor_availability WHERE tutor_id = %s",
+            "SELECT day_of_week, time_slot FROM tutor_availability WHERE tutor_id = %s AND is_available = 1 ORDER BY day_of_week, time_slot;",
             (id,)
         )
         slots = cursor.fetchall()
@@ -983,27 +983,6 @@ def get_student_id_from_token(token: str):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-@app.get("/verify-token")
-async def verify_token(authorization: str = Header(...)):
-    try:
-        token = authorization.split("Bearer ")[1]
-        payload = jwt.decode(token, "your_strong_secret_key", algorithms=["HS256"])
-        
-        email = payload.get("sub")
-        if not email:
-            raise HTTPException(status_code=401, detail="Missing email in token")
-        
-        # Return both email and public_id for frontend clarity
-        return {
-            "email": email,
-            "is_valid": True
-        }
-        
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
-
 # Endpoint to handle bookings
 @app.post("/book-lesson/{tutor_id}")
 async def book_lesson(
@@ -1013,14 +992,26 @@ async def book_lesson(
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-
         # Get tutor DB ID
         cursor.execute("SELECT id FROM users WHERE public_id = %s", (tutor_id,))
         tutor = cursor.fetchone()
         if not tutor:
             raise HTTPException(status_code=404, detail="Tutor not found")
 
-        # 3. Proceed with booking (same as before)
+        # Check if the time slot is available
+        cursor.execute(
+            """
+            SELECT is_available FROM tutor_availability 
+            WHERE tutor_id = %s AND day_of_week = %s AND time_slot = %s
+            """,
+            (tutor["id"], request.day_of_week, request.time_slot)
+        )
+        availability = cursor.fetchone()
+        
+        if not availability or not availability['is_available']:
+            raise HTTPException(status_code=400, detail="Time slot not available")
+
+        # Insert the booking
         cursor.execute(
             """
             INSERT INTO bookings 
@@ -1029,6 +1020,22 @@ async def book_lesson(
             """,
             (tutor["id"], request.student_id, request.day_of_week, request.time_slot, request.duration, request.frequency)
         )
+
+        # Update availability for the full duration
+        cursor.execute(
+            """
+            UPDATE tutor_availability 
+            SET is_available = FALSE 
+            WHERE tutor_id = %s AND day_of_week = %s AND time_slot >= %s AND time_slot < %s
+            """,
+            (
+                tutor["id"],
+                request.day_of_week,
+                request.time_slot,
+                request.time_slot + request.duration
+            )
+        )
+
         conn.commit()
         return {"message": "Booked successfully!"}
 

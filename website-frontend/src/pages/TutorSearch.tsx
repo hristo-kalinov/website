@@ -48,7 +48,7 @@ function TutorSearch() {
       params.append('max_price', priceRange);
 
       const token = localStorage.getItem('token');
-      
+      console.log("Token:", token); // Debugging line to check token value
       // If token is missing, redirect immediately
       if (!token) {
         setIsLoading(false);

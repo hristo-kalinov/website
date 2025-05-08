@@ -23,7 +23,7 @@ const BookLesson = () => {
   };
 
   const slotToTime = (slot) => {
-    const totalMinutes = 8 * 60 + slot * 30;
+    const totalMinutes = slot * 30;
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
