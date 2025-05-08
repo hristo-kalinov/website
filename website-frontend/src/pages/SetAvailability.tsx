@@ -155,7 +155,7 @@ const AvailabilityGrid = () => {
           {Array.from({ length: 48 }).map((_, slotIndex) => (
             <div
               key={slotIndex}
-              className="h-8 flex items-center justify-end text-xs text-gray-500"
+              className="h-8 flex items-center justify-end text-xs text-gray-500 mb-[1px]"
             >
               {slotIndex % 2 === 0 && (
                 <span className="mr-2">{formatTime(slotIndex)}</span>
