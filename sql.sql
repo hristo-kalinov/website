@@ -7,6 +7,7 @@ USE website_db;
 -- USERS table
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    public_id VARCHAR(36) NOT NULL UNIQUE,
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -59,7 +60,16 @@ CREATE TABLE tutor_availability (
     is_available BOOLEAN NOT NULL DEFAULT true,
     CONSTRAINT unique_tutor_time_slot UNIQUE (tutor_id, day_of_week, time_slot)
 );
+CREATE TABLE bookings (
+  id SERIAL PRIMARY KEY,
+  tutor_id INTEGER REFERENCES users(id),
+  student_id INTEGER REFERENCES users(id),
+  day_of_week INTEGER,
+  time_slot INTEGER,
+  duration INTEGER,
+  frequency VARCHAR(10)
+);
 SELECT * from users;
-DROP TABLE appointments;
 SHOW TABLES;
 SELECT * FROM tutor_availability;
+SELECT * FROM bookings;
