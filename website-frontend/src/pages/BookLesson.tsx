@@ -13,13 +13,13 @@ const BookLesson = () => {
   const [expandedDay, setExpandedDay] = useState(null);
 
   const dayNames = {
-    1: 'Monday',
-    2: 'Tuesday',
-    3: 'Wednesday',
-    4: 'Thursday',
-    5: 'Friday',
-    6: 'Saturday',
-    7: 'Sunday'
+    0: 'Monday',
+    1: 'Tuesday',
+    2: 'Wednesday',
+    3: 'Thursday',
+    4: 'Friday',
+    5: 'Saturday',
+    6: 'Sunday'
   };
 
   const slotToTime = (slot) => {
@@ -79,65 +79,95 @@ const BookLesson = () => {
     const fetchAvailability = async () => {
       try {
         setLoading(true);
+        setError('');
         const token = localStorage.getItem('token');
-        
+  
+        // Debug: Log the tutorId and token (remove in production)
+        console.log('Fetching availability for tutor:', tutorId);
+        console.log('Using token:', token ? '✔️ (exists)' : '❌ (missing)');
+  
+        // 1. Validate token exists
+        if (!token) {
+          throw new Error('Not authenticated. Please log in.');
+        }
+  
+        // 2. Make API request
         const response = await fetch('http://localhost:8001/get-availability', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ tutor_id: tutorId })
+          body: JSON.stringify({ tutor_id: tutorId }) // Ensure this matches your backend
         });
-
-        if (!response.ok) throw new Error('Failed to fetch availability');
-        
-        const { availability } = await response.json();
-        setAvailability(availability);
+  
+        // 3. Handle HTTP errors
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            errorData.detail || 
+            `HTTP Error: ${response.status} ${response.statusText}`
+          );
+        }
+  
+        // 4. Validate response format
+        const data = await response.json();
+        console.log('API Response:', data); // Debug raw response
+  
+        if (!data.availability || !Array.isArray(data.availability)) {
+          throw new Error('Invalid availability data format');
+        }
+  
+        // 5. Update state
+        setAvailability(data.availability);
       } catch (err) {
+        console.error('Fetch error:', err);
         setError(err.message);
+        setAvailability([]); // Reset availability on error
       } finally {
         setLoading(false);
       }
     };
-
+  
     fetchAvailability();
   }, [tutorId]);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedStart) {
-      setError('Please select a start time');
-      return;
-    }
-
+    setError('');
+    setSuccess('');
+  
     try {
       const token = localStorage.getItem('token');
+      // 2. Proceed with booking
       const response = await fetch(`http://localhost:8001/book-lesson/${tutorId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          student_id: 2,
           day_of_week: selectedStart.day,
           time_slot: selectedStart.slot,
           duration: selectedDuration,
           frequency
         })
       });
-
-      if (!response.ok) throw new Error('Booking failed');
+  
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || 'Booking failed');
+      }
+  
+      setSuccess('Booked successfully!');
       
-      setSelectedStart(null);
-      setSelectedDuration(1);
-      setError('');
-      setSuccess('Lesson booked successfully!');
-      setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
       setError(err.message);
+      console.error('Booking error:', err);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">

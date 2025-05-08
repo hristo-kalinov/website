@@ -155,21 +155,7 @@ function Dashboard() {
                 <p className="text-gray-600 mt-1">{userData.profile_title}</p>
               )}
               
-              {userData?.user_type === 'tutor' && userData?.rating && (
-                <div className="flex items-center mt-2">
-                  <div className="flex items-center">
-                    {[...Array(5)].map((_, i) => (
-                      <Star 
-                        key={i}
-                        className={`h-5 w-5 ${i < Math.floor(userData.rating) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`}
-                      />
-                    ))}
-                  </div>
-                  <span className="ml-1 text-sm text-gray-600">
-                    ({userData.total_reviews} reviews)
-                  </span>
-                </div>
-              )}
+              
               
               <div className="mt-4 w-full">
                 <h3 className="font-medium text-gray-900 mb-2">За мен</h3>
@@ -274,7 +260,7 @@ function Dashboard() {
                 </p>
                 <div className="mt-6">
                   <Link
-                    to={userData?.user_type === 'tutor' ? '/tutor/availability' : '/find-tutor'}
+                    to={userData?.user_type === 'tutor' ? '/availability' : '/find-tutor'}
                     className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                   >
                     <Plus className="-ml-1 mr-2 h-5 w-5" />

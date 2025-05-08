@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, Body
+from fastapi import FastAPI, HTTPException, Depends, Header, status, UploadFile, File, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -148,6 +148,16 @@ class AvailabilityUpdate(BaseModel):
     availability: list[AvailabilitySlot]
 class AvailabilityRequest(BaseModel):
     tutor_id: str
+
+# Request model for booking
+class BookLessonRequest(BaseModel):
+    student_id: int
+    day_of_week: int      # From frontend's selectedStart.day
+    time_slot: int        # From selectedStart.slot
+    duration: int         # From selectedDuration
+    frequency: str        # "once" or "weekly"
+
+
 # Initialize FastAPI app
 app = FastAPI()
 
@@ -215,13 +225,18 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 async def get_user(email: str) -> Optional[UserInDB]:
+    print(f"DEBUG: Searching for email: {email}", flush=True)  # Log the exact email
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email.lower(),))  # Case-insensitive
         user = cursor.fetchone()
+        print(f"DEBUG: Found user: {user}", flush=True)  # Log the query result
         if user:
             return UserInDB(**user)
+        return None
+    except Exception as e:
+        print(f"ERROR in get_user: {str(e)}", flush=True)  # Log any errors
         return None
     finally:
         cursor.close()
@@ -434,29 +449,48 @@ async def change_own_bio(
 async def generate_jitsi_token(
     current_user: UserInDB = Depends(get_current_active_user)
 ):
-    room = secrets.token_hex(16)
-    now = datetime.utcnow() + timedelta(hours=3)
-    expire = now + timedelta(minutes=JWT_EXPIRE_MINUTES)
-    
-    payload = {
-        "typ": "JWT",
-        "alg": "HS256",
-        "aud": JWT_APP_ID,
-        "iss": JWT_APP_ID,
-        "sub": "*",
-        "room": "*",
-        "iat": int(now.timestamp()),
-        "nbf": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=JWT_EXPIRE_MINUTES)).timestamp()),
-        "context": {
-            "user": {
-            "name": f"{current_user.first_name}"
+    """Generates a Jitsi token using the user's public_id"""
+    try:
+        # 1. Generate random room ID
+        room = secrets.token_hex(16)
+        
+        # 2. Calculate timestamps
+        now = datetime.utcnow()
+        expire = now + timedelta(minutes=JWT_EXPIRE_MINUTES)
+        
+        # 3. Create payload with public_id
+        payload = {
+            "typ": "JWT",
+            "alg": "HS256",
+            "aud": JWT_APP_ID,
+            "iss": JWT_APP_ID,
+            "sub": current_user.public_id,  # Using public_id here
+            "room": room,
+            "iat": int(now.timestamp()),
+            "nbf": int(now.timestamp()),
+            "exp": int(expire.timestamp()),
+            "context": {
+                "user": {
+                    "name": current_user.first_name or "Participant",
+                    "id": current_user.public_id  # Additional identifier
+                }
             }
         }
-    }
 
-    token = jwt.encode(payload, JWT_APP_SECRET, algorithm=JWT_ALGORITHM)
-    return {"jitsi_token": token, "room": room}
+        # 4. Generate token
+        token = jwt.encode(payload, JWT_APP_SECRET, algorithm=JWT_ALGORITHM)
+        
+        return {
+            "jitsi_token": token,
+            "room": room,
+            "expires_at": expire.isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Token generation failed: {str(e)}"
+        )
 
 @app.get("/tutors/subjects", response_model=list[str])
 async def get_all_subjects():
@@ -936,6 +970,71 @@ async def get_availability(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error"
         )
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_student_id_from_token(token: str):
+    try:
+        payload = jwt.decode(token, "your_strong_secret_key", algorithms=["HS256"])
+        return payload.get("sub")  # Assuming user ID is in 'sub'
+    except Exception as e:
+        print(f"Token decode error: {e}")  # Debug
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+@app.get("/verify-token")
+async def verify_token(authorization: str = Header(...)):
+    try:
+        token = authorization.split("Bearer ")[1]
+        payload = jwt.decode(token, "your_strong_secret_key", algorithms=["HS256"])
+        
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Missing email in token")
+        
+        # Return both email and public_id for frontend clarity
+        return {
+            "email": email,
+            "is_valid": True
+        }
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+
+# Endpoint to handle bookings
+@app.post("/book-lesson/{tutor_id}")
+async def book_lesson(
+    tutor_id: str,
+    request: BookLessonRequest,
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+
+        # Get tutor DB ID
+        cursor.execute("SELECT id FROM users WHERE public_id = %s", (tutor_id,))
+        tutor = cursor.fetchone()
+        if not tutor:
+            raise HTTPException(status_code=404, detail="Tutor not found")
+
+        # 3. Proceed with booking (same as before)
+        cursor.execute(
+            """
+            INSERT INTO bookings 
+            (tutor_id, student_id, day_of_week, time_slot, duration, frequency)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (tutor["id"], request.student_id, request.day_of_week, request.time_slot, request.duration, request.frequency)
+        )
+        conn.commit()
+        return {"message": "Booked successfully!"}
+
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         cursor.close()
         conn.close()

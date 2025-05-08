@@ -23,7 +23,7 @@ CREATE TABLE users (
     bio TEXT,
     hourly_rate DECIMAL(10, 2),
     video_intro_url TEXT,
-    verification_status ENUM('unverified', 'verified', 'rejected') DEFAULT 'pending',
+    verification_status ENUM('unverified', 'verified', 'rejected') DEFAULT 'unverified',
     rating DECIMAL(3, 2),
     total_reviews INT DEFAULT 0
 );
