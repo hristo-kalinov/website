@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Camera, Edit2, HomeIcon, MessageSquare, BookOpen, Settings,
+  Camera, Edit2, HomeIcon, MessageSquare, BookOpen, Settings, User, Hourglass,
   GraduationCap, Search, Bell, LogOut, Clock, Calendar,
   TrendingUp, Users, Plus, Menu, X, Loader2, ChevronRight,
   Star, CreditCard, Bookmark, Video, FileText, HelpCircle
@@ -15,12 +15,19 @@ interface Lesson {
   tutor_first_name: string;
   tutor_last_name: string;
   day_of_week: string;
-  time_slot: string;
   duration: number;
   frequency: string;
   scheduled_at: string;
 }
-
+const daysBg = [
+  "понеделник",
+  "вторник",
+  "сряда",
+  "четвъртък",
+  "петък",
+  "събота",
+  "неделя"
+];
 
 export function BalanceButton() {
   const [balance, setBalance] = useState<number | null>(null);
@@ -81,8 +88,6 @@ function Dashboard() {
     const [error, setError] = useState(null);
   
     useEffect(() => {
-      if (!userData?.id) return;
-    
       const fetchNextLesson = async () => {
         try {
           const token = localStorage.getItem("token");
@@ -111,20 +116,71 @@ function Dashboard() {
       fetchNextLesson();
     }, [userData]);
     if (loading) return <p>Зареждане...</p>;
-    if (error) return <p className="text-red-600">Грешка: {error}</p>;
+    if (error) return <p className="text-red-600">Грешка при взимане на уроци.</p>;
   
     if (!nextLesson) return <p>Няма предстоящи уроци.</p>;
   
     return (
-      <div className="space-y-2">
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <p><strong>Преподавател:</strong> {nextLesson.tutor_first_name}</p>
-          <p><strong>Ден:</strong> {nextLesson.day_of_week}</p>
-          <p><strong>Час:</strong> {nextLesson.time_slot}</p>
-          <p><strong>Продължителност:</strong> {nextLesson.duration} мин</p>
-          <p><strong>Насрочено за:</strong> {new Date(nextLesson.scheduled_at).toLocaleString()}</p>
+<div className="space-y-4">
+  {nextLesson?.day_of_week !== undefined ? (
+    <div className="p-6">
+      <div className="bg-gradient-to-br from-indigo-100 to-white rounded-2xl shadow-lg p-6 border border-indigo-200">
+        <h3 className="text-xl font-semibold text-indigo-800 mb-6">📘 Предстоящ урок</h3>
+        <div className="space-y-4 text-base">
+          <div className="flex items-center gap-2">
+            <User className="h-5 w-5 text-indigo-500" />
+            <span className="text-gray-800 font-medium">
+              {nextLesson.tutor_first_name} {nextLesson.tutor_last_name}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-indigo-500" />
+            <span className="text-gray-800 capitalize">
+              {daysBg[nextLesson.day_of_week]}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-indigo-500" />
+            <span className="text-gray-800">
+              {new Date(nextLesson.scheduled_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Hourglass className="h-5 w-5 text-indigo-500" />
+            <span className="text-gray-800">{nextLesson.duration} минути</span>
+          </div>
         </div>
       </div>
+    </div>
+  ) : (
+    <div className="p-6">
+      <div className="text-center py-10 rounded-xl border border-gray-200 shadow-sm bg-white">
+        <Clock className="mx-auto h-12 w-12 text-gray-400" />
+        <h3 className="mt-4 text-xl font-semibold text-gray-900">Няма предстоящи уроци</h3>
+        <p className="mt-2 text-gray-500">
+          {userData?.user_type === "tutor"
+            ? "Когато имате записани уроци, те ще се появят тук."
+            : "Запишете се за урок с преподавател."}
+        </p>
+        <div className="mt-6">
+          <Link
+            to={userData?.user_type === "tutor" ? "/availability" : "/find-tutor"}
+            className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700 transition"
+          >
+            <Plus className="-ml-1 mr-2 h-5 w-5" />
+            {userData?.user_type === "tutor"
+              ? "Добави свободни часове"
+              : "Намери преподавател"}
+          </Link>
+        </div>
+      </div>
+    </div>
+  )}
+</div>
+
     );
   };
 
@@ -319,9 +375,7 @@ function Dashboard() {
                 Виж всички
               </Link>
             </div>
-            <div className="p-6">
-              <UpcomingLessons userData={userData} />
-            </div>
+            <UpcomingLessons userData={userData} />
           </div>
 
 

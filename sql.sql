@@ -65,11 +65,30 @@ CREATE TABLE bookings (
   tutor_id INTEGER REFERENCES users(id),
   student_id INTEGER REFERENCES users(id),
   day_of_week INTEGER,
-  time_slot INTEGER,
   duration INTEGER,
-  frequency VARCHAR(10)
+  frequency VARCHAR(10),
+  scheduled_at DATETIME
 );
-SELECT * from users;
-SHOW TABLES;
-SELECT * FROM tutor_availability;
+
+SELECT 
+    b.day_of_week,
+    b.time_slot,
+    b.duration,
+    b.frequency,
+    b.scheduled_at,
+    u.first_name AS tutor_first_name,
+    u.last_name AS tutor_last_name
+FROM 
+    bookings b
+JOIN 
+    users u ON b.tutor_id = u.id
+WHERE 
+    b.student_id = 2
+    AND b.scheduled_at > NOW()
+ORDER BY 
+    b.scheduled_at ASC
+LIMIT 1; 
+
 SELECT * FROM bookings;
+DROP TABLE bookings;
+SELECT * FROM users;

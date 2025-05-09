@@ -1035,17 +1035,6 @@ async def book_lesson(
         if not availability or not availability['is_available']:
             raise HTTPException(status_code=400, detail="Time slot not available")
 
-        # Insert the booking
-        cursor.execute(
-            """
-            INSERT INTO bookings 
-            (tutor_id, student_id, day_of_week, time_slot, duration, frequency)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """,
-            (tutor["id"], request.student_id, request.day_of_week, request.time_slot, request.duration, request.frequency)
-        )
-
-
 
         # Update availability for the full duration
         cursor.execute(
@@ -1066,10 +1055,10 @@ async def book_lesson(
         cursor.execute(
             """
             INSERT INTO bookings 
-            (tutor_id, student_id, day_of_week, time_slot, duration, frequency, scheduled_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (tutor_id, student_id, day_of_week, duration, frequency, scheduled_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (tutor["id"], request.student_id, request.day_of_week, request.time_slot, request.duration, request.frequency, scheduled_at)
+            (tutor["id"], request.student_id, request.day_of_week, request.duration, request.frequency, scheduled_at)
         )
 
         
@@ -1097,7 +1086,6 @@ async def get_next_lesson(current_user: UserInDB = Depends(get_current_active_us
         cursor.execute("""
         SELECT 
             b.day_of_week,
-            b.time_slot,
             b.duration,
             b.frequency,
             b.scheduled_at,
@@ -1124,7 +1112,6 @@ async def get_next_lesson(current_user: UserInDB = Depends(get_current_active_us
             "tutor_first_name": lesson["tutor_first_name"],
             "tutor_last_name": lesson["tutor_last_name"],
             "day_of_week": lesson["day_of_week"],
-            "time_slot": lesson["time_slot"],
             "duration": lesson["duration"]*30, # Convert to minutes
             "frequency": lesson["frequency"],
             "scheduled_at": lesson["scheduled_at"]
