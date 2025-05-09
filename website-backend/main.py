@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Header, status, UploadFile, File, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, status, UploadFile, File, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -20,6 +20,9 @@ import json
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import Query
 import uuid
+
+router = APIRouter()
+
 
 class ConnectionManager:
     def __init__(self):
@@ -225,18 +228,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 async def get_user(email: str) -> Optional[UserInDB]:
-    print(f"DEBUG: Searching for email: {email}", flush=True)  # Log the exact email
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute("SELECT * FROM users WHERE email = %s", (email.lower(),))  # Case-insensitive
         user = cursor.fetchone()
-        print(f"DEBUG: Found user: {user}", flush=True)  # Log the query result
         if user:
             return UserInDB(**user)
         return None
     except Exception as e:
-        print(f"ERROR in get_user: {str(e)}", flush=True)  # Log any errors
         return None
     finally:
         cursor.close()
@@ -255,7 +255,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         user_type = payload.get("user_type")
         
         if not email or not user_type:
-            print("ERROR: Missing email/user_type in token", flush=True)
             raise HTTPException(status_code=401, detail="Invalid token payload")
             
         user = await get_user(email)
@@ -273,6 +272,33 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 
 async def get_current_active_user(current_user: UserInDB = Depends(get_current_user)):
     return current_user
+
+
+def get_next_scheduled_datetime(day_of_week, time_slot):
+    now = datetime.now()
+    today_weekday = now.weekday()  # Monday=0 to Sunday=6
+
+    # MySQL convention might use Sunday=0, so you may need to map it:
+    mysql_to_python_day_map = {0: 6, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
+    target_weekday = mysql_to_python_day_map.get(day_of_week, day_of_week)
+
+    days_ahead = (target_weekday - today_weekday) % 7
+    if days_ahead == 0:
+        # Same day: only schedule if time is in the future
+        slot_hour = time_slot // 2
+        slot_minute = (time_slot % 2) * 30
+        lesson_time_today = now.replace(hour=slot_hour, minute=slot_minute, second=0, microsecond=0)
+        if lesson_time_today > now:
+            return lesson_time_today
+        else:
+            days_ahead = 7  # Push to next week
+
+    next_date = now + timedelta(days=days_ahead)
+    slot_hour = time_slot // 2
+    slot_minute = (time_slot % 2) * 30
+    scheduled_at = next_date.replace(hour=slot_hour, minute=slot_minute, second=0, microsecond=0)
+
+    return scheduled_at
 
 # Endpoints
 @app.post("/login", response_model=Token)
@@ -957,7 +983,6 @@ async def get_availability(
         )
         result = cursor.fetchone()
         id = result['id']
-        print(f"ID: {id}", flush=True)
         cursor.execute(
             "SELECT day_of_week, time_slot FROM tutor_availability WHERE tutor_id = %s AND is_available = 1 ORDER BY day_of_week, time_slot;",
             (id,)
@@ -979,7 +1004,6 @@ def get_student_id_from_token(token: str):
         payload = jwt.decode(token, "your_strong_secret_key", algorithms=["HS256"])
         return payload.get("sub")  # Assuming user ID is in 'sub'
     except Exception as e:
-        print(f"Token decode error: {e}")  # Debug
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
@@ -1021,6 +1045,8 @@ async def book_lesson(
             (tutor["id"], request.student_id, request.day_of_week, request.time_slot, request.duration, request.frequency)
         )
 
+
+
         # Update availability for the full duration
         cursor.execute(
             """
@@ -1036,6 +1062,18 @@ async def book_lesson(
             )
         )
 
+        scheduled_at = get_next_scheduled_datetime(request.day_of_week, request.time_slot)
+        cursor.execute(
+            """
+            INSERT INTO bookings 
+            (tutor_id, student_id, day_of_week, time_slot, duration, frequency, scheduled_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (tutor["id"], request.student_id, request.day_of_week, request.time_slot, request.duration, request.frequency, scheduled_at)
+        )
+
+        
+
         conn.commit()
         return {"message": "Booked successfully!"}
 
@@ -1045,3 +1083,54 @@ async def book_lesson(
     finally:
         cursor.close()
         conn.close()
+
+@app.get("/students/next-lesson")
+async def get_next_lesson(current_user: UserInDB = Depends(get_current_active_user)):
+    conn = None
+    try:
+        student_id = current_user.id
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        
+        # Get both one-time and recurring lessons
+        cursor.execute("""
+        SELECT 
+            b.day_of_week,
+            b.time_slot,
+            b.duration,
+            b.frequency,
+            b.scheduled_at,
+            u.first_name AS tutor_first_name,
+            u.last_name AS tutor_last_name
+        FROM 
+            bookings b
+        JOIN 
+            users u ON b.tutor_id = u.id
+        WHERE 
+            b.student_id = %s
+            AND b.scheduled_at > NOW()
+        ORDER BY 
+            b.scheduled_at ASC
+        LIMIT 1; 
+        """, (student_id,))
+        
+        lesson = cursor.fetchone()
+        print(lesson, flush=True)
+        if not lesson:
+            return {"message": "No upcoming lessons found"}
+        
+        return {
+            "tutor_first_name": lesson["tutor_first_name"],
+            "tutor_last_name": lesson["tutor_last_name"],
+            "day_of_week": lesson["day_of_week"],
+            "time_slot": lesson["time_slot"],
+            "duration": lesson["duration"]*30, # Convert to minutes
+            "frequency": lesson["frequency"],
+            "scheduled_at": lesson["scheduled_at"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn:
+            conn.close()

@@ -11,10 +11,22 @@ interface UserData {
   id: number; email: string; first_name: string; last_name: string; subject?: string; profile_title?: string; bio?: string | null; hourly_rate?: number; profile_picture_url?: string | null; video_intro_url?: string | null; verification_status?: 'unverified' | 'pending' | 'verified'; rating?: number; total_reviews?: number; created_at: string; updated_at: string; last_login_at?: string | null; is_active: boolean; user_type: 'tutor' | 'student';
 }
 
+interface Lesson {
+  tutor_first_name: string;
+  tutor_last_name: string;
+  day_of_week: string;
+  time_slot: string;
+  duration: number;
+  frequency: string;
+  scheduled_at: string;
+}
+
+
 export function BalanceButton() {
   const [balance, setBalance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
 
   useEffect(() => {
     const fetchBalance = async () => {
@@ -47,6 +59,11 @@ export function BalanceButton() {
   return (<button className="flex items-center space-x-2 bg-white bg-opacity-20 hover:bg-opacity-30 backdrop-blur-sm px-4 py-2.5 rounded-xl text-white transition-all"><CreditCard className="w-5 h-5" /><span>Баланс: {(balance || 0).toFixed(2)} лв.</span></button>);
 }
 
+
+
+
+
+
 function Dashboard() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,6 +73,60 @@ function Dashboard() {
   const [tempBio, setTempBio] = useState('');
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+
+  const UpcomingLessons = ({ userData }: { userData: UserData | null }) => {
+    const [nextLesson, setNextLesson] = useState<Lesson | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+  
+    useEffect(() => {
+      if (!userData?.id) return;
+    
+      const fetchNextLesson = async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const res = await fetch(`http://localhost:8001/students/next-lesson`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.detail || "Failed to load lesson");
+          }
+          
+          const data = await res.json();
+          setNextLesson(data);
+        } catch (err) {
+          setError(err.message || "Failed to load lesson");
+        } finally {
+          setLoading(false);
+        }
+      };
+    
+      fetchNextLesson();
+    }, [userData]);
+    if (loading) return <p>Зареждане...</p>;
+    if (error) return <p className="text-red-600">Грешка: {error}</p>;
+  
+    if (!nextLesson) return <p>Няма предстоящи уроци.</p>;
+  
+    return (
+      <div className="space-y-2">
+        <div className="bg-blue-50 p-4 rounded-lg">
+          <p><strong>Преподавател:</strong> {nextLesson.tutor_first_name}</p>
+          <p><strong>Ден:</strong> {nextLesson.day_of_week}</p>
+          <p><strong>Час:</strong> {nextLesson.time_slot}</p>
+          <p><strong>Продължителност:</strong> {nextLesson.duration} мин</p>
+          <p><strong>Насрочено за:</strong> {new Date(nextLesson.scheduled_at).toLocaleString()}</p>
+        </div>
+      </div>
+    );
+  };
 
   const handleProfilePictureUpload = async (file: File) => {
     const token = localStorage.getItem('token');
@@ -71,7 +142,6 @@ function Dashboard() {
       console.error('Error uploading profile picture:', error);
     }
   };
-
   useEffect(() => {
     const fetchUserData = async () => {
       setIsLoading(true); setError(null);
@@ -250,27 +320,12 @@ function Dashboard() {
               </Link>
             </div>
             <div className="p-6">
-              <div className="text-center py-8">
-                <Clock className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-3 text-lg font-medium text-gray-900">Няма предстоящи уроци</h3>
-                <p className="mt-1 text-gray-500">
-                  {userData?.user_type === 'tutor' 
-                    ? 'Когато имате записани уроци, те ще се появят тук.' 
-                    : 'Запишете се за урок с преподавател.'}
-                </p>
-                <div className="mt-6">
-                  <Link
-                    to={userData?.user_type === 'tutor' ? '/availability' : '/find-tutor'}
-                    className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                  >
-                    <Plus className="-ml-1 mr-2 h-5 w-5" />
-                    {userData?.user_type === 'tutor' ? 'Добави свободни часове' : 'Намери преподавател'}
-                  </Link>
-                </div>
-              </div>
+              <UpcomingLessons userData={userData} />
             </div>
           </div>
 
+
+    
           {/* Recent Activity */}
           <div className="bg-white rounded-xl shadow-sm">
             <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">

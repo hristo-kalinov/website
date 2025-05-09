@@ -73,6 +73,8 @@ const BookLesson = () => {
     setSelectedDuration(1);
   };
 
+  
+
   useEffect(() => {
     const fetchAvailability = async () => {
       try {
@@ -157,6 +159,8 @@ const BookLesson = () => {
       console.error('Booking error:', err);
     }
   };
+
+  
 
 
   return (
@@ -336,6 +340,7 @@ const BookLesson = () => {
               </div>
             </div>
 
+            
             {/* Submit button */}
             <button
               type="submit"
@@ -352,6 +357,7 @@ const BookLesson = () => {
                 'Изберете време за резервация'
               )}
             </button>
+            
           </form>
         </div>
       </div>
