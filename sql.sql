@@ -70,6 +70,15 @@ CREATE TABLE bookings (
   scheduled_at DATETIME
 );
 
+CREATE TABLE jitsi_rooms (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  booking_id BIGINT UNSIGNED NOT NULL UNIQUE,
+  room_name VARCHAR(255) NOT NULL,
+  jwt_token TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+);
+
 SELECT 
     b.day_of_week,
     b.time_slot,

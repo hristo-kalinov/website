@@ -8,7 +8,6 @@ from typing import Optional
 import mysql.connector
 from mysql.connector import Error
 from passlib.context import CryptContext
-from datetime import datetime, timedelta
 import jwt
 from jwt import PyJWTError
 import os
@@ -81,7 +80,8 @@ class Conversation(BaseModel):
 JWT_APP_ID = "your_app_id"
 JWT_APP_SECRET = "your_strong_secret_key"
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_MINUTES = 60
+JWT_EXPIRE_MINUTES = 120
+JITSI_DOMAIN = "localhost"  # Replace with your Jitsi domain
 logger = logging.getLogger(__name__)
 
 # Pydantic models
@@ -1077,47 +1077,156 @@ async def book_lesson(
 async def get_next_lesson(current_user: UserInDB = Depends(get_current_active_user)):
     conn = None
     try:
-        student_id = current_user.id
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        
-        # Get both one-time and recurring lessons
-        cursor.execute("""
-        SELECT 
-            b.day_of_week,
-            b.duration,
-            b.frequency,
-            b.scheduled_at,
-            u.first_name AS tutor_first_name,
-            u.last_name AS tutor_last_name
-        FROM 
-            bookings b
-        JOIN 
-            users u ON b.tutor_id = u.id
-        WHERE 
-            b.student_id = %s
-            AND b.scheduled_at > NOW()
-        ORDER BY 
-            b.scheduled_at ASC
-        LIMIT 1; 
-        """, (student_id,))
-        
+        if current_user.user_type == 'tutor':
+            # For tutors, search by tutor_id and get student info
+            cursor.execute("""
+                SELECT 
+                    b.day_of_week,
+                    b.duration,
+                    b.frequency,
+                    b.scheduled_at,
+                    u.first_name AS student_first_name,
+                    u.last_name AS student_last_name,
+                    u.profile_picture_url AS student_profile_picture,
+                    u.public_id AS student_public_id
+                FROM 
+                    bookings b
+                JOIN 
+                    users u ON b.student_id = u.id
+                WHERE 
+                    b.tutor_id = %s
+                    AND NOW() < DATE_ADD(b.scheduled_at, INTERVAL b.duration * 30 MINUTE)
+                ORDER BY 
+                    b.scheduled_at ASC
+                LIMIT 1;
+            """, (current_user.id,))
+        else:
+            # For students, search by student_id and get tutor info
+            cursor.execute("""
+                SELECT 
+                    b.day_of_week,
+                    b.duration,
+                    b.frequency,
+                    b.scheduled_at,
+                    u.first_name AS tutor_first_name,
+                    u.last_name AS tutor_last_name,
+                    u.profile_picture_url AS tutor_profile_picture,
+                    u.subject AS tutor_subject,
+                    u.public_id AS tutor_public_id,
+                    u.hourly_rate AS tutor_hourly_rate
+                FROM 
+                    bookings b
+                JOIN 
+                    users u ON b.tutor_id = u.id
+                WHERE 
+                    b.student_id = %s
+                    AND NOW() < DATE_ADD(b.scheduled_at, INTERVAL b.duration * 30 MINUTE)
+                ORDER BY 
+                    b.scheduled_at ASC
+                LIMIT 1;
+            """, (current_user.id,))
+
         lesson = cursor.fetchone()
-        print(lesson, flush=True)
         if not lesson:
             return {"message": "No upcoming lessons found"}
         
-        return {
-            "tutor_first_name": lesson["tutor_first_name"],
-            "tutor_last_name": lesson["tutor_last_name"],
-            "day_of_week": lesson["day_of_week"],
-            "duration": lesson["duration"]*30, # Convert to minutes
-            "frequency": lesson["frequency"],
-            "scheduled_at": lesson["scheduled_at"]
-        }
+        if current_user.user_type == 'tutor':
+            return {
+                "student_first_name": lesson["student_first_name"],
+                "student_last_name": lesson["student_last_name"],
+                "student_profile_picture": lesson["student_profile_picture"],
+                "student_public_id": lesson["student_public_id"],
+                "day_of_week": lesson["day_of_week"],
+                "duration": lesson["duration"]*30, # Convert to minutes
+                "frequency": lesson["frequency"],
+                "scheduled_at": lesson["scheduled_at"],
+                "time_left": (lesson["scheduled_at"] - datetime.now()).total_seconds()
+            }
+        else:
+            return {
+                "tutor_first_name": lesson["tutor_first_name"],
+                "tutor_last_name": lesson["tutor_last_name"],
+                "tutor_profile_picture": lesson["tutor_profile_picture"],
+                "tutor_subject": lesson["tutor_subject"],
+                "tutor_public_id": lesson["tutor_public_id"],
+                "tutor_hourly_rate": lesson["tutor_hourly_rate"],
+                "day_of_week": lesson["day_of_week"],
+                "duration": lesson["duration"]*30, # Convert to minutes
+                "frequency": lesson["frequency"],
+                "scheduled_at": lesson["scheduled_at"],
+                "time_left": (lesson["scheduled_at"] - datetime.now()).total_seconds()
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if conn:
             conn.close()
+@app.get("/get-lesson-link")
+async def get_lesson_link(current_user: UserInDB = Depends(get_current_active_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT id AS booking_id, scheduled_at
+            FROM bookings
+            WHERE tutor_id = %s
+              AND NOW() > DATE_SUB(scheduled_at, INTERVAL 5 MINUTE)
+              AND NOW() < DATE_ADD(scheduled_at, INTERVAL duration * 30 MINUTE)
+            ORDER BY scheduled_at ASC
+            LIMIT 1;
+        """, (current_user.id,))
+        lesson = cursor.fetchone()
+
+        if not lesson:
+            raise HTTPException(status_code=404, detail="No upcoming lessons found")
+
+        booking_id = lesson["booking_id"]
+
+        # Create unique room name (deterministic per booking, or use secrets.token_hex for randomness)
+        room_name = f"booking_{booking_id}"
+
+        now = datetime.utcnow()
+        expire = now + timedelta(hours=10)  # Example: Token expires in 1 hour
+
+        # Generate JWT token
+        payload = {
+            "typ": "JWT",
+            "alg": "HS256",
+            "aud": JWT_APP_ID,
+            "iss": JWT_APP_ID,
+            "sub": str(current_user.public_id),  # Ensure sub is a string
+            "room": room_name,  # Use the generated room_name
+            "iat": int(now.timestamp()),
+            "nbf": int(now.timestamp()),
+            "exp": int(expire.timestamp()),
+            "context": {
+                "user": {
+                    "name": current_user.first_name or "Participant",
+                    "id": str(current_user.public_id)  # Ensure id is a string
+                }
+            }
+        }
+
+        token = jwt.encode(payload, JWT_APP_SECRET, algorithm="HS256")
+
+        lesson_url = f"https://{JITSI_DOMAIN}:8443/{room_name}?jwt={token}"
+
+        # Insert or update jitsi room info
+        cursor.execute("""
+            INSERT INTO jitsi_rooms (booking_id, room_name, jwt_token, created_at)
+            VALUES (%s, %s, %s, NOW())
+            ON DUPLICATE KEY UPDATE jwt_token = VALUES(jwt_token);
+        """, (booking_id, room_name, token))
+        conn.commit()
+
+        return {"lesson_link": lesson_url}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()

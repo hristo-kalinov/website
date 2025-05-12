@@ -3,7 +3,7 @@ import {
   Camera, Edit2, HomeIcon, MessageSquare, BookOpen, Settings, User, Hourglass,
   GraduationCap, Search, Bell, LogOut, Clock, Calendar,
   TrendingUp, Users, Plus, Menu, X, Loader2, ChevronRight,
-  Star, CreditCard, Bookmark, Video, FileText, HelpCircle
+  Star, CreditCard, Bookmark, Video, FileText, HelpCircle, ArrowRight
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useRef } from 'react';
@@ -12,12 +12,21 @@ interface UserData {
 }
 
 interface Lesson {
-  tutor_first_name: string;
-  tutor_last_name: string;
+  tutor_first_name?: string;
+  tutor_last_name?: string;
+  tutor_profile_picture?: string;
+  tutor_subject?: string;
+  tutor_public_id?: string;
+  tutor_hourly_rate?: number;
+  student_first_name?: string;
+  student_last_name?: string;
+  student_profile_picture?: string;
+  student_public_id?: string;
   day_of_week: string;
   duration: number;
   frequency: string;
   scheduled_at: string;
+  time_left?: number;
 }
 const daysBg = [
   "понеделник",
@@ -81,12 +90,13 @@ function Dashboard() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-
   const UpcomingLessons = ({ userData }: { userData: UserData | null }) => {
     const [nextLesson, setNextLesson] = useState<Lesson | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-  
+    const [timeLeft, setTimeLeft] = useState<number | null>(null);
+    const [lessonLink, setLessonLink] = useState<string | null>(null);
+
     useEffect(() => {
       const fetchNextLesson = async () => {
         try {
@@ -106,6 +116,8 @@ function Dashboard() {
           
           const data = await res.json();
           setNextLesson(data);
+          // Convert milliseconds to seconds and round down
+          setTimeLeft(Math.floor(data.time_left));
         } catch (err) {
           setError(err.message || "Failed to load lesson");
         } finally {
@@ -115,72 +127,238 @@ function Dashboard() {
     
       fetchNextLesson();
     }, [userData]);
+
+    useEffect(() => {
+      if (timeLeft === null) return;
+
+      const timer = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev === null || prev <= 0) return 0;
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(timer);
+    }, [timeLeft]);
+
+    useEffect(() => {
+      if (timeLeft !== null && timeLeft <= 300) { // 300 seconds = 5 minutes
+        const fetchLessonLink = async () => {
+          try {
+            const token = localStorage.getItem("token");
+            const res = await fetch(`http://localhost:8001/get-lesson-link`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (!res.ok) {
+              throw new Error("Failed to load lesson link");
+            }
+            
+            const data = await res.json();
+            setLessonLink(data.lesson_link); // Use the lesson_link from response
+          } catch (err) {
+            console.error("Error fetching lesson link:", err);
+          }
+        };
+        
+        // Only fetch if we haven't already
+        if (!lessonLink) {
+          fetchLessonLink();
+        }
+      }
+    }, [timeLeft, lessonLink]);
+
+    const formatTime = (seconds: number) => {
+      const days = Math.floor(seconds / (60 * 60 * 24));
+      const hours = Math.floor((seconds % (60 * 60 * 24)) / (60 * 60));
+      const mins = Math.floor((seconds % (60 * 60)) / 60);
+      const secs = seconds % 60;
+
+      if (days > 0) {
+        return `Остава: ${days} ${days === 1 ? 'ден' : 'дена'}`;
+      } else if (hours > 0) {
+        return `Остава: ${hours} ${hours === 1 ? 'час' : 'часа'}`;
+      } else if (mins > 0) {
+        return `Остава: ${mins+1} ${mins === 1 ? 'минута' : 'минути'}`;
+      } else if(secs == 0) {
+          return `Урокът Започна`;
+      } else {
+        return `${secs} ${secs === 1 ? 'секунда' : 'секунди'}`;
+      }
+    };
+
+
     if (loading) return <p>Зареждане...</p>;
     if (error) return <p className="text-red-600">Грешка при взимане на уроци.</p>;
-  
-    if (!nextLesson) return <p>Няма предстоящи уроци.</p>;
-  
-    return (
-<div className="space-y-4">
-  {nextLesson?.day_of_week !== undefined ? (
-    <div className="p-6">
-      <div className="bg-gradient-to-br from-indigo-100 to-white rounded-2xl shadow-lg p-6 border border-indigo-200">
-        <h3 className="text-xl font-semibold text-indigo-800 mb-6">📘 Предстоящ урок</h3>
-        <div className="space-y-4 text-base">
-          <div className="flex items-center gap-2">
-            <User className="h-5 w-5 text-indigo-500" />
-            <span className="text-gray-800 font-medium">
-              {nextLesson.tutor_first_name} {nextLesson.tutor_last_name}
-            </span>
+
+    if (!nextLesson?.scheduled_at) return (
+      <div className="p-6">
+        <div className="text-center py-10 rounded-xl border border-gray-200 shadow-sm bg-white">
+          <Clock className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-4 text-xl font-semibold text-gray-900">Няма предстоящи уроци</h3>
+          <p className="mt-2 text-gray-500">
+            {userData?.user_type === "tutor"
+              ? "Когато имате записани уроци, те ще се появят тук."
+              : "Запишете се за урок с преподавател."}
+          </p>
+          <div className="mt-6">
+            <Link
+              to={userData?.user_type === "tutor" ? "/availability" : "/find-tutor"}
+              className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700 transition"
+            >
+              <Plus className="-ml-1 mr-2 h-5 w-5" />
+              {userData?.user_type === "tutor"
+                ? "Добави свободни часове"
+                : "Намери преподавател"}
+            </Link>
           </div>
+        </div>
+      </div>
+    );
+
+    // For tutor view
+    if (userData?.user_type === 'tutor') {
+      return (
+        <div className="relative bg-gradient-to-br from-indigo-100 to-white rounded-b-2xl shadow-lg p-6 border border-indigo-200">          <div className="flex items-start gap-4 mb-4">
+            <img
+              src={`http://localhost:8001${nextLesson.student_profile_picture}`}
+              alt={`${nextLesson.student_first_name} ${nextLesson.student_last_name}`}
+              className="h-12 w-12 rounded-full object-cover"
+            />
+            <div>
+              <h3 className="font-medium text-gray-900">
+                {nextLesson.student_first_name} {nextLesson.student_last_name}
+              </h3>
+              <p className="text-sm text-gray-600">Урок с вас</p>
+            </div>
+          </div>
+          
+          <div className="space-y-4 text-base border-t pt-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-indigo-500" />
+              <div className="text-gray-800">
+                <span className="capitalize">{daysBg[nextLesson.day_of_week]}</span>
+                <span className="mx-2">•</span>
+                <span>
+                  {new Date(nextLesson.scheduled_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Hourglass className="h-5 w-5 text-indigo-500" />
+              <span className="text-gray-800">{nextLesson.duration} минути</span>
+              <span className="mx-2">•</span>
+              <span className="text-gray-800 capitalize">
+                {nextLesson.frequency === 'once' ? 'Веднъж' : 'Всяка седмица'}
+              </span>
+            </div>
+            {timeLeft !== null && (
+              <div className="absolute top-4 right-4 bg-white border border-indigo-300 text-indigo-700 px-4 py-2 rounded-xl shadow flex items-center gap-2 z-10">
+                <Clock className="h-5 w-5 text-indigo-500" />
+                <span className="font-medium">{formatTime(timeLeft)}</span>
+              </div>
+            )}
+
+
+
+            {lessonLink && (
+              <a 
+                href={lessonLink} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 transition mt-4"
+              >
+                Влезте в часа
+              </a>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // For student view
+    return (
+      <div className="bg-gradient-to-br from-indigo-100 to-white rounded-b-2xl shadow-lg p-6 border border-indigo-200">
+        <div className="flex items-start gap-4 mb-4">
+          <img
+            src={`http://localhost:8001${nextLesson.tutor_profile_picture}`}
+            alt={`${nextLesson.tutor_first_name} ${nextLesson.tutor_last_name}`}
+            className="h-12 w-12 rounded-full object-cover"
+          />
+          <div>
+            <h3 className="font-medium text-gray-900">
+              {nextLesson.tutor_first_name} {nextLesson.tutor_last_name}
+            </h3>
+            <p className="text-sm text-gray-600">{nextLesson.tutor_subject}</p>
+            <p className="text-sm font-medium text-indigo-600">
+              {nextLesson.tutor_hourly_rate} лв./час
+            </p>
+          </div>
+        </div>
+        
+        <div className="space-y-4 text-base border-t pt-4">
           <div className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-indigo-500" />
-            <span className="text-gray-800 capitalize">
-              {daysBg[nextLesson.day_of_week]}
-            </span>
+            <div className="text-gray-800">
+              <span className="capitalize">{daysBg[nextLesson.day_of_week]}</span>
+              <span className="mx-2">•</span>
+              <span>
+                {new Date(nextLesson.scheduled_at).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-indigo-500" />
-            <span className="text-gray-800">
-              {new Date(nextLesson.scheduled_at).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          </div>
+          
           <div className="flex items-center gap-2">
             <Hourglass className="h-5 w-5 text-indigo-500" />
             <span className="text-gray-800">{nextLesson.duration} минути</span>
+            <span className="mx-2">•</span>
+            <span className="text-gray-800 capitalize">
+              {nextLesson.frequency === 'once' ? 'Веднъж' : 'Всяка седмица'}
+            </span>
+          </div>
+
+          {timeLeft !== null && (
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-indigo-500" />
+              <span className="text-gray-800">
+                Оставащо време: {formatTime(timeLeft)}
+              </span>
+            </div>
+          )}
+
+          {lessonLink && (
+            <a 
+              href={lessonLink} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 transition mt-4"
+            >
+              Влезте в часа
+            </a>
+          )}
+          
+          <div className="pt-2">
+            <Link 
+              to={`/tutors/${nextLesson.tutor_public_id}`}
+              className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center gap-1"
+            >
+              <ArrowRight className="h-4 w-4" />
+              Виж профила на преподавателя
+            </Link>
           </div>
         </div>
       </div>
-    </div>
-  ) : (
-    <div className="p-6">
-      <div className="text-center py-10 rounded-xl border border-gray-200 shadow-sm bg-white">
-        <Clock className="mx-auto h-12 w-12 text-gray-400" />
-        <h3 className="mt-4 text-xl font-semibold text-gray-900">Няма предстоящи уроци</h3>
-        <p className="mt-2 text-gray-500">
-          {userData?.user_type === "tutor"
-            ? "Когато имате записани уроци, те ще се появят тук."
-            : "Запишете се за урок с преподавател."}
-        </p>
-        <div className="mt-6">
-          <Link
-            to={userData?.user_type === "tutor" ? "/availability" : "/find-tutor"}
-            className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700 transition"
-          >
-            <Plus className="-ml-1 mr-2 h-5 w-5" />
-            {userData?.user_type === "tutor"
-              ? "Добави свободни часове"
-              : "Намери преподавател"}
-          </Link>
-        </div>
-      </div>
-    </div>
-  )}
-</div>
-
     );
   };
 
@@ -363,7 +541,6 @@ function Dashboard() {
                     : 'Какво ще учим днес?'}
                 </p>
               </div>
-              <BalanceButton />
             </div>
           </div>
 

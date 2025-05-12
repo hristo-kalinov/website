@@ -9,6 +9,10 @@ const AvailabilityGrid = () => {
   const currentAction = useRef<'available' | 'unavailable' | null>(null);
   const days = ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'];
 
+  // Shift all time slots by 16 (8 hours) to start the day at 8:00 instead of 0:00
+  const shiftSlotIndex = (slotIndex: number) => (slotIndex + 16) % 48;
+  const unshiftSlotIndex = (shiftedIndex: number) => (shiftedIndex - 16 + 48) % 48;
+
   useEffect(() => {
     const fetchAvailability = async () => {
       try {
@@ -48,9 +52,10 @@ const AvailabilityGrid = () => {
         // Initialize a new availability grid
         const newAvailability = Array(7).fill().map(() => Array(48).fill(false));
 
-        // Mark the fetched slots as available
+        // Mark the fetched slots as available (after unshifting the slot index)
         data.availability.forEach((slot: { day_of_week: number, time_slot: number }) => {
-          newAvailability[slot.day_of_week][slot.time_slot] = true;
+          const originalSlot = unshiftSlotIndex(slot.time_slot);
+          newAvailability[slot.day_of_week][originalSlot] = true;
         });
 
         setAvailability(newAvailability);
@@ -65,8 +70,9 @@ const AvailabilityGrid = () => {
   }, []);
 
   const formatTime = (slotIndex: number) => {
-    const hours = Math.floor(slotIndex / 2);
-    const minutes = (slotIndex % 2) * 30;
+    const shiftedIndex = shiftSlotIndex(slotIndex);
+    const hours = Math.floor(shiftedIndex / 2);
+    const minutes = (shiftedIndex % 2) * 30;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   };
 
@@ -99,14 +105,13 @@ const AvailabilityGrid = () => {
     const formattedAvailability = availability.map((daySlots, dayIndex) => ({
       day: dayIndex,
       slots: daySlots
-        .map((available, slotIndex) => available ? slotIndex : -1)
+        .map((available, slotIndex) => available ? shiftSlotIndex(slotIndex) : -1)
         .filter(slotIndex => slotIndex !== -1)
     }));
 
     try {
       const token = localStorage.getItem('token');
 
-      // First, get the user's public_id again (you might want to store this to avoid repeated calls)
       const userResponse = await fetch('http://localhost:8001/users/me', {
         method: 'GET',
         headers: {

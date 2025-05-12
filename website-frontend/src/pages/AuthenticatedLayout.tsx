@@ -52,16 +52,11 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { icon: HomeIcon, label: 'Начало', path: '/dashboard' },
     { icon: MessageSquare, label: 'Съобщения', path: '/messages' },
-    { icon: BookOpen, label: 'Класна стая', path: '/classroom' },
-    { icon: Settings, label: 'Настройки', path: '/settings' },
   ];
 
   if (user?.user_type === 'tutor') {
     navItems.push({ icon: Calendar, label: 'Календар', path: '/availability' });
-  } else if (user?.user_type === 'student') {
-    navItems.push({ icon: Calendar, label: 'Резервирай урок', path: '/book_lesson' });
   }
-
   const handleLogout = () => {
     localStorage.removeItem("token");
     window.location.reload();
