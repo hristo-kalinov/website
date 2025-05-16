@@ -13,6 +13,8 @@ import TutorProfile from './pages/TutorProfile';
 import AuthenticatedLayout from './pages/AuthenticatedLayout';
 import SetAvailability from './pages/SetAvailability.tsx';
 import BookLesson from './pages/BookLesson.tsx';
+import Lessons from './pages/Lessons.tsx';
+import Verification from './pages/Verification.tsx';
 function PublicNavBar() {
   return (
     <nav className="bg-white shadow-sm">
@@ -74,6 +76,7 @@ function App() {
               <SignUp />
             </>
           } />
+          <Route path="/verification" element={<Verification/>}/>
 
           {/* Authenticated routes */}
           <Route element={<LayoutWrapper />}>
@@ -85,7 +88,9 @@ function App() {
             <Route path="/tutors/:id" element={<TutorProfile />} />
             <Route path="/availability" element={<SetAvailability/>}/>
             <Route path="/book_lesson/:id" element={<BookLesson/>}/>
+            <Route path="/lessons" element={<Lessons/>}/>
           </Route>
+
 
           {/* 404 page */}
           <Route path="*" element={

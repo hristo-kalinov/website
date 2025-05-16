@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Search, ChevronLeft } from 'lucide-react'; // Keep Menu icon just in case, though not used in this specific mobile view
+import { Send, Search, ChevronLeft, Video } from 'lucide-react'; // Keep Menu icon just in case, though not used in this specific mobile view
 import { useNavigate } from 'react-router-dom';
 
 // Helper function for authenticated fetch requests
@@ -294,9 +294,14 @@ function Messages() {
                     </div>
                   </div>
                   <div className="flex space-x-2">
-                    <button className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">
-                      Запази час
-                    </button>
+                    {currentUser.user_type === 'student' && (
+                      <button
+                        onClick={() => window.location.href = `/book_lesson/${selectedConversation.public_id}`}
+                        className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700"
+                      >
+                        Запази час
+                      </button>
+                    )}
                   </div>
                 </div>
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-
+import { useNavigate } from 'react-router-dom';
 const BookLesson = () => {
   const { id: tutorId } = useParams();
   const [availability, setAvailability] = useState([]);
@@ -11,6 +11,8 @@ const BookLesson = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [expandedDay, setExpandedDay] = useState(null);
+  const navigate = useNavigate();
+
 
   const dayNames = {
     0: 'Понеделник',
@@ -87,7 +89,7 @@ const BookLesson = () => {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ tutor_id: tutorId }) // Ensure this matches your backend
+          body: JSON.stringify({ tutor_id: tutorId, with_booking: true }) // Ensure this matches your backend
         });  
         // 3. Handle HTTP errors
         if (!response.ok) {
@@ -153,7 +155,9 @@ const BookLesson = () => {
       setSelectedDuration(1);
       setError('');
       setSuccess('Урокът е резервиран успешно!');
-      setTimeout(() => setSuccess(''), 5000);
+      setTimeout(() => {
+        navigate('/dashboard'); // or whatever your dashboard route is
+      }, 1000); // Optional delay to briefly show success message
     } catch (err) {
       setError(err.message);
       console.error('Booking error:', err);

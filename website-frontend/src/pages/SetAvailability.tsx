@@ -40,7 +40,7 @@ const AvailabilityGrid = () => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ tutor_id: tutorId }),
+          body: JSON.stringify({ tutor_id: tutorId, with_bookings: false }),
         });
 
         if (!availabilityResponse.ok) {

@@ -3,8 +3,9 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, constr
+from pydantic import BaseModel, constr, EmailStr
 from typing import Optional
+from typing import List
 import mysql.connector
 from mysql.connector import Error
 from passlib.context import CryptContext
@@ -19,6 +20,8 @@ import json
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi import Query
 import uuid
+import secrets
+import resend
 
 router = APIRouter()
 
@@ -65,6 +68,7 @@ class Conversation(BaseModel):
     id: int
     tutor_id: int
     student_id: int
+    public_id: str
     created_at: datetime
     updated_at: datetime
     last_message: Optional[str] = None  # if used
@@ -83,7 +87,8 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = 120
 JITSI_DOMAIN = "localhost"  # Replace with your Jitsi domain
 logger = logging.getLogger(__name__)
-
+VERIFICATION_LINK_BASE = "http://localhost:5173/verification"
+resend.api_key = "re_G2Vu17hG_Ek7xEERiZxXJ5QDhTBhRCt7E"
 # Pydantic models
 class UserLogin(BaseModel):
     email: str
@@ -151,6 +156,7 @@ class AvailabilityUpdate(BaseModel):
     availability: list[AvailabilitySlot]
 class AvailabilityRequest(BaseModel):
     tutor_id: str
+    with_booking: bool = False  # Whether to include booking details
 
 # Request model for booking
 class BookLessonRequest(BaseModel):
@@ -193,7 +199,7 @@ DB_CONFIG = {
 # Security configurations
 SECRET_KEY = "your-secret-key-here"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_DAYS = 30
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -278,11 +284,7 @@ def get_next_scheduled_datetime(day_of_week, time_slot):
     now = datetime.now()
     today_weekday = now.weekday()  # Monday=0 to Sunday=6
 
-    # MySQL convention might use Sunday=0, so you may need to map it:
-    mysql_to_python_day_map = {0: 6, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
-    target_weekday = mysql_to_python_day_map.get(day_of_week, day_of_week)
-
-    days_ahead = (target_weekday - today_weekday) % 7
+    days_ahead = (day_of_week - today_weekday) % 7
     if days_ahead == 0:
         # Same day: only schedule if time is in the future
         slot_hour = time_slot // 2
@@ -308,8 +310,9 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
     access_token = create_access_token(
         data={"sub": user.email, "user_type": user.user_type},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta=timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     )
+    print(access_token, flush=True)
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/register")
@@ -566,7 +569,7 @@ async def search_tutors(
                 rating,
                 hourly_rate as price,
                 COALESCE(profile_picture_url, '/uploads/default_pfp.webp') as image,
-                COALESCE(bio, '') as description
+                COALESCE(profile_title, '') as description
             FROM users
             WHERE is_active = TRUE AND user_type = 'tutor'
         """
@@ -654,7 +657,7 @@ async def start_conversation(
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # First get the tutor's real ID from their public_id
+        # Get tutor's ID from their public_id
         cursor.execute("""
             SELECT id FROM users 
             WHERE public_id = %s AND user_type = 'tutor'
@@ -675,8 +678,10 @@ async def start_conversation(
         
         if existing:
             cursor.execute("""
-                SELECT * FROM conversations 
-                WHERE id = %s
+                SELECT c.*, u.public_id, u.first_name, u.last_name, u.profile_picture_url AS image
+                FROM conversations c
+                JOIN users u ON c.tutor_id = u.id
+                WHERE c.id = %s
             """, (existing['id'],))
             return cursor.fetchone()
         
@@ -688,8 +693,10 @@ async def start_conversation(
         conn.commit()
         
         cursor.execute("""
-            SELECT * FROM conversations 
-            WHERE id = LAST_INSERT_ID()
+            SELECT c.*, u.public_id, u.first_name, u.last_name, u.profile_picture_url AS image
+            FROM conversations c
+            JOIN users u ON c.tutor_id = u.id
+            WHERE c.id = LAST_INSERT_ID()
         """)
         return cursor.fetchone()
         
@@ -700,7 +707,7 @@ async def start_conversation(
         cursor.close()
         conn.close()
 
-@app.get("/conversations", response_model=list[Conversation])
+@app.get("/conversations", response_model=List[Conversation])
 async def get_user_conversations(
     current_user: UserInDB = Depends(get_current_active_user)
 ):
@@ -710,19 +717,21 @@ async def get_user_conversations(
     try:
         if current_user.user_type == "tutor":
             cursor.execute("""
-                SELECT c.*, 
-                       (SELECT COUNT(*) FROM messages m 
-                        WHERE m.conversation_id = c.id AND m.is_read = FALSE 
-                        AND m.sender_id = c.student_id) as unread_count,
-                       (SELECT m.content FROM messages m 
-                        WHERE m.conversation_id = c.id 
-                        ORDER BY m.sent_at DESC LIMIT 1) as last_message_content,
-                       (SELECT m.sent_at FROM messages m 
-                        WHERE m.conversation_id = c.id 
-                        ORDER BY m.sent_at DESC LIMIT 1) as last_message_time,
-                       u.first_name as first_name,
-                       u.last_name as last_name,
-                       u.profile_picture_url as image
+                SELECT 
+                    c.*, 
+                    u.public_id AS public_id,
+                    u.first_name,
+                    u.last_name,
+                    u.profile_picture_url AS image,
+                    (SELECT COUNT(*) FROM messages m 
+                     WHERE m.conversation_id = c.id AND m.is_read = FALSE 
+                     AND m.sender_id = c.student_id) AS unread_count,
+                    (SELECT m.content FROM messages m 
+                     WHERE m.conversation_id = c.id 
+                     ORDER BY m.sent_at DESC LIMIT 1) AS last_message_content,
+                    (SELECT m.sent_at FROM messages m 
+                     WHERE m.conversation_id = c.id 
+                     ORDER BY m.sent_at DESC LIMIT 1) AS last_message_time
                 FROM conversations c
                 JOIN users u ON c.student_id = u.id
                 WHERE c.tutor_id = %s
@@ -730,19 +739,27 @@ async def get_user_conversations(
             """, (current_user.id,))
         else:
             cursor.execute("""
-                SELECT c.*, 
-                       (SELECT COUNT(*) FROM messages m 
-                        WHERE m.conversation_id = c.id AND m.is_read = FALSE 
-                        AND m.sender_id = c.tutor_id) as unread_count,
-                       (SELECT m.content FROM messages m 
-                        WHERE m.conversation_id = c.id 
-                        ORDER BY m.sent_at DESC LIMIT 1) as last_message_content,
-                       (SELECT m.sent_at FROM messages m 
-                        WHERE m.conversation_id = c.id 
-                        ORDER BY m.sent_at DESC LIMIT 1) as last_message_time,
-                       u.first_name as first_name,
-                       u.last_name as last_name,
-                       u.profile_picture_url as image
+                SELECT 
+                    c.*,
+                    u.public_id AS public_id,
+                    u.first_name,
+                    u.last_name,
+                    u.profile_picture_url AS image,
+                    (SELECT COUNT(*) 
+                     FROM messages m 
+                     WHERE m.conversation_id = c.id 
+                     AND m.is_read = FALSE 
+                     AND m.sender_id = c.tutor_id) AS unread_count,
+                    (SELECT m.content 
+                     FROM messages m 
+                     WHERE m.conversation_id = c.id 
+                     ORDER BY m.sent_at DESC 
+                     LIMIT 1) AS last_message_content,
+                    (SELECT m.sent_at 
+                     FROM messages m 
+                     WHERE m.conversation_id = c.id 
+                     ORDER BY m.sent_at DESC 
+                     LIMIT 1) AS last_message_time
                 FROM conversations c
                 JOIN users u ON c.tutor_id = u.id
                 WHERE c.student_id = %s
@@ -983,10 +1000,16 @@ async def get_availability(
         )
         result = cursor.fetchone()
         id = result['id']
-        cursor.execute(
-            "SELECT day_of_week, time_slot FROM tutor_availability WHERE tutor_id = %s AND is_available = 1 ORDER BY day_of_week, time_slot;",
-            (id,)
-        )
+        if tutor.with_booking:
+            cursor.execute(
+                "SELECT day_of_week, time_slot FROM tutor_availability WHERE tutor_id = %s AND is_available = 1 ORDER BY day_of_week, time_slot;",
+                (id,)
+            )
+        else:
+            cursor.execute(
+                "SELECT day_of_week, time_slot FROM tutor_availability WHERE tutor_id = %s ORDER BY day_of_week, time_slot;",
+                (id,)
+            )
         slots = cursor.fetchall()
         return {"availability": slots}
 
@@ -1012,9 +1035,12 @@ def get_student_id_from_token(token: str):
 async def book_lesson(
     tutor_id: str,
     request: BookLessonRequest,
+    current_user: UserInDB = Depends(get_current_active_user)
 ):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+    if(current_user.user_type != "student"):
+        raise HTTPException(status_code=403, detail="Only students can book lessons")
     try:
         # Get tutor DB ID
         cursor.execute("SELECT id FROM users WHERE public_id = %s", (tutor_id,))
@@ -1082,6 +1108,7 @@ async def get_next_lesson(current_user: UserInDB = Depends(get_current_active_us
         
         if current_user.user_type == 'tutor':
             # For tutors, search by tutor_id and get student info
+            # Inside the tutor block
             cursor.execute("""
                 SELECT 
                     b.day_of_week,
@@ -1098,11 +1125,13 @@ async def get_next_lesson(current_user: UserInDB = Depends(get_current_active_us
                     users u ON b.student_id = u.id
                 WHERE 
                     b.tutor_id = %s
+                    AND b.active = TRUE
                     AND NOW() < DATE_ADD(b.scheduled_at, INTERVAL b.duration * 30 MINUTE)
                 ORDER BY 
                     b.scheduled_at ASC
                 LIMIT 1;
             """, (current_user.id,))
+
         else:
             # For students, search by student_id and get tutor info
             cursor.execute("""
@@ -1123,6 +1152,7 @@ async def get_next_lesson(current_user: UserInDB = Depends(get_current_active_us
                     users u ON b.tutor_id = u.id
                 WHERE 
                     b.student_id = %s
+                    AND b.active = TRUE
                     AND NOW() < DATE_ADD(b.scheduled_at, INTERVAL b.duration * 30 MINUTE)
                 ORDER BY 
                     b.scheduled_at ASC
@@ -1164,21 +1194,28 @@ async def get_next_lesson(current_user: UserInDB = Depends(get_current_active_us
     finally:
         if conn:
             conn.close()
+            
 @app.get("/get-lesson-link")
 async def get_lesson_link(current_user: UserInDB = Depends(get_current_active_user)):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
     try:
-        cursor.execute("""
+        # Choose the correct filter key based on user type
+        filter_key = "student_id" if current_user.user_type == "student" else "tutor_id"
+
+        # Fetch the upcoming lesson (within the valid time window)
+        cursor.execute(f"""
             SELECT id AS booking_id, scheduled_at
             FROM bookings
-            WHERE tutor_id = %s
-              AND NOW() > DATE_SUB(scheduled_at, INTERVAL 5 MINUTE)
-              AND NOW() < DATE_ADD(scheduled_at, INTERVAL duration * 30 MINUTE)
+            WHERE {filter_key} = %s
+            AND active = TRUE
+            AND NOW() > DATE_SUB(scheduled_at, INTERVAL 5 MINUTE)
+            AND NOW() < DATE_ADD(scheduled_at, INTERVAL duration * 30 MINUTE)
             ORDER BY scheduled_at ASC
             LIMIT 1;
         """, (current_user.id,))
+
         lesson = cursor.fetchone()
 
         if not lesson:
@@ -1186,36 +1223,38 @@ async def get_lesson_link(current_user: UserInDB = Depends(get_current_active_us
 
         booking_id = lesson["booking_id"]
 
-        # Create unique room name (deterministic per booking, or use secrets.token_hex for randomness)
-        room_name = f"booking_{booking_id}"
+        # Check if room already exists for this booking
+        cursor.execute("SELECT room_name FROM jitsi_rooms WHERE booking_id = %s", (booking_id,))
+        existing_room = cursor.fetchone()
+
+        # Use existing room or create a new random one
+        room_name = existing_room["room_name"] if existing_room else f"room_{secrets.token_hex(8)}"
 
         now = datetime.utcnow()
-        expire = now + timedelta(hours=10)  # Example: Token expires in 1 hour
+        expire = now + timedelta(hours=10)
 
-        # Generate JWT token
         payload = {
             "typ": "JWT",
             "alg": "HS256",
             "aud": JWT_APP_ID,
             "iss": JWT_APP_ID,
-            "sub": str(current_user.public_id),  # Ensure sub is a string
-            "room": room_name,  # Use the generated room_name
+            "sub": str(current_user.public_id),
+            "room": room_name,
             "iat": int(now.timestamp()),
             "nbf": int(now.timestamp()),
             "exp": int(expire.timestamp()),
             "context": {
                 "user": {
                     "name": current_user.first_name or "Participant",
-                    "id": str(current_user.public_id)  # Ensure id is a string
+                    "id": str(current_user.public_id)
                 }
             }
         }
 
         token = jwt.encode(payload, JWT_APP_SECRET, algorithm="HS256")
-
         lesson_url = f"https://{JITSI_DOMAIN}:8443/{room_name}?jwt={token}"
 
-        # Insert or update jitsi room info
+        # Insert or update the jitsi room with new JWT
         cursor.execute("""
             INSERT INTO jitsi_rooms (booking_id, room_name, jwt_token, created_at)
             VALUES (%s, %s, %s, NOW())
@@ -1226,6 +1265,309 @@ async def get_lesson_link(current_user: UserInDB = Depends(get_current_active_us
         return {"lesson_link": lesson_url}
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.get("/lessons", response_model=List[dict])
+async def get_lessons(current_user: UserInDB = Depends(get_current_active_user)):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        if current_user.user_type == 'tutor':
+            # For tutors, get all active lessons with student info
+            cursor.execute("""
+                SELECT 
+                    b.id,
+                    b.day_of_week,
+                    b.duration,
+                    b.frequency,
+                    b.scheduled_at,
+                    u.first_name AS student_first_name,
+                    u.last_name AS student_last_name,
+                    u.profile_picture_url AS student_profile_picture,
+                    u.public_id AS student_public_id,
+                    CASE 
+                        WHEN NOW() < b.scheduled_at THEN 'upcoming'
+                        WHEN NOW() BETWEEN b.scheduled_at AND DATE_ADD(b.scheduled_at, INTERVAL b.duration * 30 MINUTE) THEN 'ongoing'
+                        ELSE 'completed'
+                    END AS status
+                FROM 
+                    bookings b
+                JOIN 
+                    users u ON b.student_id = u.id
+                WHERE 
+                    b.tutor_id = %s AND b.active = TRUE
+                ORDER BY 
+                    b.scheduled_at DESC;
+            """, (current_user.id,))
+        else:
+            # For students, get all active lessons with tutor info
+            cursor.execute("""
+                SELECT 
+                    b.id,
+                    b.day_of_week,
+                    b.duration,
+                    b.frequency,
+                    b.scheduled_at,
+                    u.first_name AS tutor_first_name,
+                    u.last_name AS tutor_last_name,
+                    u.profile_picture_url AS tutor_profile_picture,
+                    u.subject AS tutor_subject,
+                    u.public_id AS tutor_public_id,
+                    u.hourly_rate AS tutor_hourly_rate,
+                    CASE 
+                        WHEN NOW() < b.scheduled_at THEN 'upcoming'
+                        WHEN NOW() BETWEEN b.scheduled_at AND DATE_ADD(b.scheduled_at, INTERVAL b.duration * 30 MINUTE) THEN 'ongoing'
+                        ELSE 'completed'
+                    END AS status
+                FROM 
+                    bookings b
+                JOIN 
+                    users u ON b.tutor_id = u.id
+                WHERE 
+                    b.student_id = %s AND b.active = TRUE
+                ORDER BY 
+                    b.scheduled_at DESC;
+            """, (current_user.id,))
+
+        lessons = cursor.fetchall()
+        if not lessons:
+            return []
+        
+        result = []
+        for lesson in lessons:
+            if current_user.user_type == 'tutor':
+                result.append({
+                    "id": lesson["id"],
+                    "student_first_name": lesson["student_first_name"],
+                    "student_last_name": lesson["student_last_name"],
+                    "student_profile_picture": lesson["student_profile_picture"],
+                    "student_public_id": lesson["student_public_id"],
+                    "day_of_week": lesson["day_of_week"],
+                    "duration": lesson["duration"] * 30,  # Convert to minutes
+                    "frequency": lesson["frequency"],
+                    "scheduled_at": lesson["scheduled_at"],
+                    "status": lesson["status"],
+                    "time_left": (lesson["scheduled_at"] - datetime.now()).total_seconds() if lesson["status"] == "upcoming" else None
+                })
+            else:
+                result.append({
+                    "id": lesson["id"],
+                    "tutor_first_name": lesson["tutor_first_name"],
+                    "tutor_last_name": lesson["tutor_last_name"],
+                    "tutor_profile_picture": lesson["tutor_profile_picture"],
+                    "tutor_subject": lesson["tutor_subject"],
+                    "tutor_public_id": lesson["tutor_public_id"],
+                    "tutor_hourly_rate": lesson["tutor_hourly_rate"],
+                    "day_of_week": lesson["day_of_week"],
+                    "duration": lesson["duration"] * 30,  # Convert to minutes
+                    "frequency": lesson["frequency"],
+                    "scheduled_at": lesson["scheduled_at"],
+                    "status": lesson["status"],
+                    "time_left": (lesson["scheduled_at"] - datetime.now()).total_seconds() if lesson["status"] == "upcoming" else None
+                })
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if conn:
+            conn.close()
+            
+@app.delete("/delete-lesson/{lesson_id}")
+async def delete_lesson(
+    lesson_id: int,
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Fetch necessary booking details
+        cursor.execute("""
+            SELECT tutor_id, student_id, scheduled_at, duration
+            FROM bookings 
+            WHERE id = %s AND active = TRUE
+        """, (lesson_id,))
+        lesson = cursor.fetchone()
+
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+
+        if current_user.user_type == "tutor" and lesson["tutor_id"] != current_user.id:
+            raise HTTPException(status_code=403, detail="You do not have permission to delete this lesson")
+        elif current_user.user_type == "student" and lesson["student_id"] != current_user.id:
+            raise HTTPException(status_code=403, detail="You do not have permission to delete this lesson")
+
+        scheduled_at: datetime = lesson["scheduled_at"]
+        duration = lesson["duration"]
+        day_of_week = scheduled_at.weekday()  # 0 = Monday, 6 = Sunday
+        hour = scheduled_at.hour
+        minute = scheduled_at.minute
+
+        # Calculate time slot index
+        start_slot = hour * 2 + (minute // 30)
+        end_slot = start_slot + duration
+
+        # Cancel the booking
+        cursor.execute("UPDATE bookings SET active = FALSE, status = 'cancelled' WHERE id = %s", (lesson_id,))
+
+        # Free up all affected time slots
+        for time_slot in range(start_slot, end_slot):
+            cursor.execute("""
+                UPDATE tutor_availability 
+                SET is_available = TRUE 
+                WHERE tutor_id = %s AND day_of_week = %s AND time_slot = %s
+            """, (lesson["tutor_id"], day_of_week, time_slot))
+
+        conn.commit()
+        return {"message": "Lesson deleted successfully"}
+
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.get("/total-lessons")
+async def get_total_lessons(
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        if current_user.user_type == "tutor":
+            cursor.execute("""
+                SELECT COUNT(*) as total_lessons
+                FROM bookings
+                WHERE tutor_id = %s AND status = 'completed'
+            """, (current_user.id,))
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) as total_lessons
+                FROM bookings
+                WHERE student_id = %s AND status = 'completed'
+            """, (current_user.id,))
+
+        result = cursor.fetchone()
+        return {"total_lessons": result['total_lessons']}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/send-verification")
+def send_verification_email(current_user: UserInDB = Depends(get_current_active_user)):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Check if a recent token exists
+        cursor.execute(
+            "SELECT email_verification_token, token_created_at FROM users WHERE id = %s",
+            (current_user.id,)
+        )
+        user = cursor.fetchone()
+        
+        # Reuse token if created recently (e.g., within last 5 minutes)
+        if user['email_verification_token'] and user['token_created_at'] > datetime.now() - timedelta(minutes=5):
+            token = user['email_verification_token']
+        else:
+            token = str(uuid.uuid4())
+            cursor.execute(
+                "UPDATE users SET email_verification_token = %s, token_created_at = NOW() WHERE id = %s",
+                (token, current_user.id)
+            )
+            conn.commit()
+        
+    finally:
+        cursor.close()
+        conn.close()
+
+    try:
+        resend.Emails.send(
+            {
+                "from": "Infizity <info@infizity.com>",
+                "to": [current_user.email],
+                "subject": "Потвърдете вашия имейл",  # "Verify your email" in Bulgarian
+                "html": f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #2563eb;">Потвърждение на имейл адрес</h2>
+                    <p>Моля, кликнете на линка по-долу, за да потвърдите вашия имейл адрес:</p>
+                    <a
+                        href="{VERIFICATION_LINK_BASE}?email={current_user.email}&token={token}"
+                        style="
+                            display: inline-block;
+                            margin: 16px 0;
+                            padding: 12px 24px;
+                            background-color: #2563eb;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 4px;
+                            font-weight: bold;
+                        "
+                    >
+                        Потвърди имейл
+                    </a>
+                    <p>Ако не сте поискали това потвърждение, моля игнорирайте този имейл.</p>
+                    <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
+                        С уважение,<br>
+                        Екипът на Infizity
+                    </p>
+                </div>
+                """,
+            }
+        )        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email send failed: {str(e)}")
+
+    return {"message": "Verification email sent."}
+
+@app.get("/verify-email")
+def verify_email(
+    email: str = Query(..., description="Email address"),
+    token: str = Query(..., description="Email verification token"),
+):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # First check if user is already verified
+        cursor.execute(
+            "SELECT * FROM users WHERE email = %s AND email_verified_at IS NOT NULL",
+            (email,)
+        )
+        verified_user = cursor.fetchone()
+        if verified_user:
+            return {"message": "Email verified successfully."}
+        
+        # If not verified, proceed with token verification
+        cursor.execute(
+            "SELECT * FROM users WHERE email_verification_token = %s AND email = %s",
+            (token, email)
+        )
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid token or email")
+        
+        cursor.execute(
+            "UPDATE users SET email_verified_at = NOW(), email_verification_token = NULL, verification_status = 'verified' WHERE id = %s",
+            (user['id'],)
+        )
+        conn.commit()
+        return {"message": "Email verified successfully."}
+    except Error as e:
+        conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         cursor.close()

@@ -26,7 +26,12 @@ CREATE TABLE users (
     video_intro_url TEXT,
     verification_status ENUM('unverified', 'verified', 'rejected') DEFAULT 'unverified',
     rating DECIMAL(3, 2),
-    total_reviews INT DEFAULT 0
+    total_reviews INT DEFAULT 0,
+    email_verification_token VARCHAR(255) UNIQUE,
+    token_created_at DATETIME,  -- Added for tracking token generation time
+    email_verified_at DATETIME,
+    INDEX idx_email_verification_token (email_verification_token),  -- Added for faster lookups
+    INDEX idx_email_verified (email_verified_at)  -- Added for verification queries
 );
 
 -- CONVERSATIONS table
@@ -61,43 +66,25 @@ CREATE TABLE tutor_availability (
     CONSTRAINT unique_tutor_time_slot UNIQUE (tutor_id, day_of_week, time_slot)
 );
 CREATE TABLE bookings (
-  id SERIAL PRIMARY KEY,
-  tutor_id INTEGER REFERENCES users(id),
-  student_id INTEGER REFERENCES users(id),
-  day_of_week INTEGER,
-  duration INTEGER,
-  frequency VARCHAR(10),
-  scheduled_at DATETIME
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tutor_id INT,
+    student_id INT,
+    day_of_week INT,
+    duration INT,
+    frequency VARCHAR(10),
+    scheduled_at DATETIME,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    status ENUM('pending', 'completed', 'cancelled') DEFAULT 'pending',
+    FOREIGN KEY (tutor_id) REFERENCES users(id),
+    FOREIGN KEY (student_id) REFERENCES users(id)
 );
-
 CREATE TABLE jitsi_rooms (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  booking_id BIGINT UNSIGNED NOT NULL UNIQUE,
+  booking_id INT NOT NULL UNIQUE,
   room_name VARCHAR(255) NOT NULL,
   jwt_token TEXT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
 );
 
-SELECT 
-    b.day_of_week,
-    b.time_slot,
-    b.duration,
-    b.frequency,
-    b.scheduled_at,
-    u.first_name AS tutor_first_name,
-    u.last_name AS tutor_last_name
-FROM 
-    bookings b
-JOIN 
-    users u ON b.tutor_id = u.id
-WHERE 
-    b.student_id = 2
-    AND b.scheduled_at > NOW()
-ORDER BY 
-    b.scheduled_at ASC
-LIMIT 1; 
-
-SELECT * FROM bookings;
-DROP TABLE bookings;
 SELECT * FROM users;

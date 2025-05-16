@@ -167,11 +167,6 @@ function TutorProfile() {
               </div>
             </div>
             {/* Rating & Reviews Badge */}
-            <div className="flex items-center text-yellow-500 mt-2">
-              <Star className="w-5 h-5 fill-current mr-1" />
-              <span className="font-semibold">{tutor.rating ? tutor.rating.toFixed(1) : 'N/A'}</span>
-              <span className="text-gray-500 ml-1">({tutor.total_reviews} отзива)</span>
-            </div>
           </div>
         </div>
 
@@ -184,7 +179,6 @@ function TutorProfile() {
               <nav className="flex space-x-8">
                 {[
                   { id: 'about', label: 'За мен' },
-                  { id: 'reviews', label: 'Отзиви' },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -241,26 +235,6 @@ function TutorProfile() {
                 </div>
               </div>
             )}
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <h3 className="text-lg font-semibold mb-4">Статистика</h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <ThumbsUp className="w-5 h-5 text-gray-400 mr-2" />
-                    <span>Процент на отговаряне</span>
-                  </div>
-                  <span className="font-medium">98%</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <Clock className="w-5 h-5 text-gray-400 mr-2" />
-                    <span>Средно време за отговор</span>
-                  </div>
-                  <span className="font-medium">2 часа</span>
-                </div>
-              </div>
-          </div>
           </div>
         </div>
       </div>
