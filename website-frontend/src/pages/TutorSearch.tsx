@@ -3,6 +3,7 @@ import { Search, Sliders, Check } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom'; // Import useNavigate
 
 function TutorSearch() {
+  const API_URL = import.meta.env.VITE_API_URL;
   const navigate = useNavigate(); // Get the navigate function
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
@@ -16,7 +17,7 @@ function TutorSearch() {
   // Fetch subjects on component mount
   useEffect(() => {
     const fetchSubjects = () => {
-      fetch('http://localhost:8001/tutors/subjects')
+      fetch(`${API_URL}/tutors/subjects`)
         .then((response) => {
           if (!response.ok) {
             throw new Error('Failed to fetch subjects');
@@ -57,7 +58,7 @@ function TutorSearch() {
         return; // Stop the fetch call
       }
 
-      fetch(`http://localhost:8001/tutors/search?${params.toString()}`, {
+      fetch(`${API_URL}/tutors/search?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }, // Always send token if available
       })
         .then((response) => {
@@ -216,7 +217,7 @@ function TutorSearch() {
                 >
                   <div className="flex items-start space-x-4">
                     <img
-                      src={`http://localhost:8001${tutor.image}`}
+                      src={`${API_URL}${tutor.image}`}
                       alt={tutor.name}
                       className="w-16 h-16 rounded-full object-cover"
                     />

@@ -33,6 +33,7 @@ interface UserData {
 // };
 
 const LessonsPage = () => {
+  const API_URL = import.meta.env.VITE_API_URL;
   const [userData, setUserData] = useState<UserData | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +52,7 @@ const LessonsPage = () => {
         return;
       }
       try {
-        const response = await fetch("http://localhost:8001/users/me", {
+        const response = await fetch(`${API_URL}/users/me`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -92,7 +93,7 @@ const LessonsPage = () => {
       setLoading(true); // Ensure loading is true when starting to fetch lessons
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:8001/lessons', {
+        const res = await fetch(`${API_URL}/lessons`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -137,7 +138,7 @@ const LessonsPage = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8001/delete_lesson/${lessonId}`, {
+      const response = await fetch(`${API_URL}/delete-lesson/${lessonId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -178,7 +179,7 @@ const LessonsPage = () => {
       Няма налични уроци.
       {userData && ( // Ensure userData is available before showing link
          <div className="mt-4">
-            <Link to={userData.user_type === 'tutor' ? '/availability' : '/find-tutor'}
+            <Link to={userData.user_type === 'tutor' ? '/availability' : '/tutors'}
               className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700 transition">
               {userData.user_type === 'tutor' ? 'Добави свободни часове' : 'Намери учител'}
             </Link>
@@ -193,7 +194,7 @@ const LessonsPage = () => {
       {lessons.map(lesson => (
         <div
           key={lesson.id}
-          className="bg-gradient-to-br from-indigo-100 to-white rounded-2xl shadow-lg p-6 border border-indigo-200"
+          className="relative bg-gradient-to-br from-indigo-100 to-white rounded-2xl shadow-lg p-6 border border-indigo-200"
         >
           <button
             onClick={() => handleDeleteLesson(lesson.id)}
@@ -205,12 +206,12 @@ const LessonsPage = () => {
 
           <div className="flex items-start gap-4 mb-4">
             <img
-              src={`http://localhost:8001${userData?.user_type === 'tutor' ? lesson.student_profile_picture : lesson.tutor_profile_picture}`}
+              src={`${API_URL}${userData?.user_type === 'tutor' ? lesson.student_profile_picture : lesson.tutor_profile_picture}`}
               alt={userData?.user_type === 'tutor'
                 ? `${lesson.student_first_name} ${lesson.student_last_name}`
                 : `${lesson.tutor_first_name} ${lesson.tutor_last_name}`}
               className="h-12 w-12 rounded-full object-cover border border-indigo-200"
-              onError={(e) => (e.currentTarget.src = '/default-profile.png')} // Basic fallback
+              onError={(e) => (e.currentTarget.src = '/default-profile.png')}
             />
             <div>
               <h3 className="font-medium text-gray-900">
@@ -224,8 +225,8 @@ const LessonsPage = () => {
             </div>
           </div>
 
-          <div className="relative bg-gradient-to-br from-indigo-100 to-white rounded-b-2xl shadow-lg p-6 border border-indigo-200"> 
-            <div className="flex items-center gap-2">
+          <div className="bg-gradient-to-br from-indigo-100 to-white rounded-b-2xl shadow-inner p-6 border border-indigo-200">
+            <div className="flex items-center gap-2 mb-3">
               <Calendar className="h-5 w-5 text-indigo-500 flex-shrink-0" />
               <div className="text-gray-800">
                 <span className="capitalize">{formatDayOfWeek(lesson.scheduled_at)}</span>
@@ -249,6 +250,5 @@ const LessonsPage = () => {
       ))}
     </div>
   );
-};
-
+}
 export default LessonsPage;

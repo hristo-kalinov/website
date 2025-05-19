@@ -22,7 +22,10 @@ from fastapi import Query
 import uuid
 import secrets
 import resend
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 router = APIRouter()
 
 
@@ -84,10 +87,10 @@ class Conversation(BaseModel):
 JWT_APP_ID = "your_app_id"
 JWT_APP_SECRET = "your_strong_secret_key"
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_MINUTES = 120
-JITSI_DOMAIN = "localhost"  # Replace with your Jitsi domain
+JWT_EXPIRE_MINUTES = 360
+JITSI_DOMAIN = os.getenv("JITSI_URL")
 logger = logging.getLogger(__name__)
-VERIFICATION_LINK_BASE = "http://localhost:5173/verification"
+VERIFICATION_LINK_BASE = os.getenv("API_URL")+"/verification"
 resend.api_key = "re_G2Vu17hG_Ek7xEERiZxXJ5QDhTBhRCt7E"
 # Pydantic models
 class UserLogin(BaseModel):
@@ -160,7 +163,6 @@ class AvailabilityRequest(BaseModel):
 
 # Request model for booking
 class BookLessonRequest(BaseModel):
-    student_id: int
     day_of_week: int      # From frontend's selectedStart.day
     time_slot: int        # From selectedStart.slot
     duration: int         # From selectedDuration
@@ -181,7 +183,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["https://infizity.com", "https://www.infizity.com", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1084,7 +1086,7 @@ async def book_lesson(
             (tutor_id, student_id, day_of_week, duration, frequency, scheduled_at)
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (tutor["id"], request.student_id, request.day_of_week, request.duration, request.frequency, scheduled_at)
+            (tutor["id"], current_user.id, request.day_of_week, request.duration, request.frequency, scheduled_at)
         )
 
         
@@ -1252,7 +1254,7 @@ async def get_lesson_link(current_user: UserInDB = Depends(get_current_active_us
         }
 
         token = jwt.encode(payload, JWT_APP_SECRET, algorithm="HS256")
-        lesson_url = f"https://{JITSI_DOMAIN}:8443/{room_name}?jwt={token}"
+        lesson_url = f"{JITSI_DOMAIN}/{room_name}?jwt={token}"
 
         # Insert or update the jitsi room with new JWT
         cursor.execute("""
@@ -1566,6 +1568,34 @@ def verify_email(
         )
         conn.commit()
         return {"message": "Email verified successfully."}
+    except Error as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/update-price")
+def update_price(
+    hourly_rate: int,
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    if current_user.user_type != "tutor":
+        raise HTTPException(status_code=403, detail="Only tutors can update their price")
+    print("hourly_rate", hourly_rate, flush=True)
+    if hourly_rate < 0:
+        raise HTTPException(status_code=400, detail="Hourly rate must be a positive number")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "UPDATE users SET hourly_rate = %s WHERE id = %s",
+            (float(hourly_rate), current_user.id)
+        )
+        conn.commit()
+        return {"message": "Price updated successfully"}
     except Error as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))

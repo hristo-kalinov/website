@@ -3,6 +3,7 @@ import { Star, Clock, Calendar, MessageSquare, Video, Users, Award, BookOpen, Gl
 import { useParams, useNavigate } from 'react-router-dom'; // Import useNavigate
 
 function TutorProfile() {
+  const API_URL = import.meta.env.VITE_API_URL;
   const [selectedTab, setSelectedTab] = useState('about');
   const [tutor, setTutor] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -20,7 +21,7 @@ function TutorProfile() {
           return; // Stop execution
         }
 
-        const response = await fetch(`http://localhost:8001/tutors/${id}`, {
+        const response = await fetch(`${API_URL}/tutors/${id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -50,7 +51,7 @@ function TutorProfile() {
           price: data.price,
           image: data.image,
           description: data.description,
-          profile_title: data.profile_title || `${data.name}'s Profile`,
+          profile_title: data.profile_title || ``,
           total_reviews: data.total_reviews || 0
         };
 
@@ -75,7 +76,7 @@ function TutorProfile() {
         return; // Stop execution
       }
 
-      const response = await fetch(`http://localhost:8001/conversations/start/${id}`, {
+      const response = await fetch(`${API_URL}/conversations/start/${id}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -121,7 +122,7 @@ function TutorProfile() {
           <div className="flex flex-col md:flex-row gap-8 items-start">
             <div className="relative">
               <img
-                src={tutor.image ? `http://localhost:8001${tutor.image}` : 'http://localhost:8001/uploads/default_pfp.webp'}
+                src={tutor.image ? `${API_URL}${tutor.image}` : '${API_URL}/uploads/default_pfp.webp'}
                 alt={tutor.name}
                 className="w-40 h-40 rounded-2xl object-cover shadow-lg"
               />
@@ -136,10 +137,6 @@ function TutorProfile() {
                   <h1 className="text-3xl font-bold text-gray-900">{tutor.name}</h1>
                   <p className="text-lg text-gray-600 mt-1">{tutor.profile_title}</p>
                   <div className="flex items-center mt-2 space-x-4">
-                    <div className="flex items-center text-gray-500">
-                      <Clock className="w-5 h-5 mr-1" />
-                      <span>1250+ часа</span>
-                    </div>
                   </div>
                 </div>
                 <div className="text-right">
@@ -171,7 +168,7 @@ function TutorProfile() {
         </div>
 
         {/* Main Content */}
-        <div className="grid grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Left Column */}
           <div className="col-span-2 space-y-8">
             {/* Tabs */}

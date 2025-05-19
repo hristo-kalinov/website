@@ -30,6 +30,7 @@ const subjects = [
   'Web дизайн',
 ];
 
+const API_URL = import.meta.env.VITE_API_URL;
 function SignUp() {
   const navigate = useNavigate();
 
@@ -78,7 +79,7 @@ function SignUp() {
     }
 
     try {
-      const response = await fetch('http://localhost:8001/register', {
+      const response = await fetch(`${API_URL}/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

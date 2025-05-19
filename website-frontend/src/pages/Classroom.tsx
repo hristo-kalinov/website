@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 function Classroom() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
+  const API_URL = import.meta.env._API_URL;
   const joinMeeting = async () => {
     setLoading(true);
     setError(null);
@@ -14,7 +14,7 @@ function Classroom() {
         return;
       }
 
-      const response = await fetch('http://localhost:8001/generate-jitsi-token', {
+      const response = await fetch(`${API_URL}/generate-jitsi-token`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -29,7 +29,7 @@ function Classroom() {
       const data = await response.json();
       const { jitsi_token, room } = data;
 
-      const domain = 'localhost:8443';
+      const domain = import.meta.env.JITSI_URL;
       const roomName = room;
 
       const url = `https://${domain}/${roomName}?jwt=${jitsi_token}`;

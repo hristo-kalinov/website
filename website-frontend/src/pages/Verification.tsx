@@ -7,7 +7,7 @@ export default function Verification() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<'pending' | 'success' | 'error'>('pending');
   const [message, setMessage] = useState('Потвърждаване на имейл...');
-
+  const API_URL = import.meta.env.VITE_API_URL;
   useEffect(() => {
     const token = searchParams.get('token');
     const email = searchParams.get('email');
@@ -20,7 +20,7 @@ export default function Verification() {
       }
 
       try {
-        const response = await fetch(`http://localhost:8001/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`, {
+        const response = await fetch(`${API_URL}/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`, {
           method: 'GET',
           credentials: 'include',
           headers: {

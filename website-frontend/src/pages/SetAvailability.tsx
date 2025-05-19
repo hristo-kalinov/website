@@ -8,7 +8,7 @@ const AvailabilityGrid = () => {
   const isDragging = useRef(false);
   const currentAction = useRef<'available' | 'unavailable' | null>(null);
   const days = ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'];
-
+  const API_URL = import.meta.env.VITE_API_URL;
   // Shift all time slots by 16 (8 hours) to start the day at 8:00 instead of 0:00
   const shiftSlotIndex = (slotIndex: number) => (slotIndex + 16) % 48;
   const unshiftSlotIndex = (shiftedIndex: number) => (shiftedIndex - 16 + 48) % 48;
@@ -19,7 +19,7 @@ const AvailabilityGrid = () => {
         const token = localStorage.getItem('token');
 
         // First, get the user's public_id
-        const userResponse = await fetch('http://localhost:8001/users/me', {
+        const userResponse = await fetch(`${API_URL}/users/me`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -34,7 +34,7 @@ const AvailabilityGrid = () => {
         const tutorId = userData.public_id;
 
         // Then, fetch availability using the public_id as tutor_id
-        const availabilityResponse = await fetch('http://localhost:8001/get-availability', {
+        const availabilityResponse = await fetch(`${API_URL}/get-availability`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -112,7 +112,7 @@ const AvailabilityGrid = () => {
     try {
       const token = localStorage.getItem('token');
 
-      const userResponse = await fetch('http://localhost:8001/users/me', {
+      const userResponse = await fetch(`${API_URL}/users/me`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -126,7 +126,7 @@ const AvailabilityGrid = () => {
       const userData = await userResponse.json();
       const tutorId = userData.public_id;
 
-      const response = await fetch('http://localhost:8001/save-availability', {
+      const response = await fetch(`${API_URL}/save-availability`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

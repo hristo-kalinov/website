@@ -5,6 +5,7 @@ import {
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
+  const API_URL = import.meta.env.VITE_API_URL;
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -24,7 +25,7 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const res = await fetch('http://localhost:8001/users/me', {
+        const res = await fetch(`${API_URL}/users/me`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -54,7 +55,7 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
     const token = localStorage.getItem("token");
 
     try {
-      const res = await fetch("http://localhost:8001/send-verification", {
+      const res = await fetch(`${API_URL}/send-verification`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

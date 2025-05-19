@@ -3,6 +3,7 @@ import { Send, Search, ChevronLeft, Video } from 'lucide-react'; // Keep Menu ic
 import { useNavigate } from 'react-router-dom';
 
 // Helper function for authenticated fetch requests
+const API_URL = import.meta.env.VITE_API_URL;
 const authenticatedFetch = async (url: string, options: RequestInit = {}, navigate: any) => {
   const token = localStorage.getItem('token');
   if (!token) {
@@ -63,7 +64,7 @@ const ConversationListItem = ({ conv, selectedConversationId, onSelect, isMobile
       onClick={handleSelect}
     >
       <div className="relative flex-shrink-0">
-        <img src={conv.image ? `http://localhost:8001${conv.image}` : 'http://localhost:8001/default_pfp.webp'} alt={name} className="w-10 h-10 rounded-full object-cover" />
+        <img src={conv.image ? `${API_URL}${conv.image}` : `${API_URL}/default_pfp.webp`} alt={name} className="w-10 h-10 rounded-full object-cover" />
         {unread > 0 && (<span className="absolute -top-1 -right-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-xs font-medium text-white">{unread}</span>)}
       </div>
       <div className="flex-1 min-w-0 text-left">
@@ -129,7 +130,7 @@ function Messages() {
   useEffect(() => {
     const fetchCurrentUser = async () => {
       try {
-        const response = await authenticatedFetch('http://localhost:8001/users/me', { method: 'GET' }, navigate);
+        const response = await authenticatedFetch(`${API_URL}/users/me`, { method: 'GET' }, navigate);
         const userData = await response.json();
         setCurrentUser(userData);
       } catch (error) {
@@ -144,7 +145,7 @@ function Messages() {
   useEffect(() => {
     const fetchConversations = async () => {
       try {
-        const response = await authenticatedFetch('http://localhost:8001/conversations', { method: 'GET' }, navigate);
+        const response = await authenticatedFetch(`${API_URL}/conversations`, { method: 'GET' }, navigate);
         const data = await response.json();
         setConversations(data);
       } catch (error) {
@@ -198,13 +199,13 @@ function Messages() {
 
   const handleSelectConversation = async (conv) => {
     try {
-      const response = await authenticatedFetch(`http://localhost:8001/conversations/${conv.id}/messages`, { method: 'GET' }, navigate);
+      const response = await authenticatedFetch(`${API_URL}/conversations/${conv.id}/messages`, { method: 'GET' }, navigate);
       const messages = await response.json();
       setSelectedConversation({ ...conv, messages });
 
       // Mark as read on the server
       try {
-          await authenticatedFetch(`http://localhost:8001/conversations/${conv.id}/read`, { method: 'POST' }, navigate);
+          await authenticatedFetch(`${API_URL}/conversations/${conv.id}/read`, { method: 'POST' }, navigate);
       } catch (readError) { console.error('Error marking conversation as read:', readError); }
 
       // Mark as read in the state immediately
@@ -220,7 +221,7 @@ function Messages() {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation) return;
     try {
-      const response = await authenticatedFetch(`http://localhost:8001/conversations/${selectedConversation.id}/messages`, { method: 'POST', body: JSON.stringify({ content: newMessage }), }, navigate);
+      const response = await authenticatedFetch(`${API_URL}/conversations/${selectedConversation.id}/messages`, { method: 'POST', body: JSON.stringify({ content: newMessage }), }, navigate);
       const sentMessage = await response.json();
       setSelectedConversation(prev => ({ ...prev, messages: [...prev.messages, sentMessage], }));
       setNewMessage('');
@@ -287,7 +288,7 @@ function Messages() {
                     {isMobile && (
                       <button onClick={handleBackToConversations} className="p-1 hover:bg-gray-100 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
                     )}
-                    <img src={selectedConversation.image ? `http://localhost:8001${selectedConversation.image}` : 'http://localhost:8001/default_pfp.webp'} alt={`${selectedConversation.first_name} ${selectedConversation.last_name}`} className="w-9 h-9 rounded-full object-cover" />
+                    <img src={selectedConversation.image ? `${API_URL}${selectedConversation.image}` : `${API_URL}/default_pfp.webp`} alt={`${selectedConversation.first_name} ${selectedConversation.last_name}`} className="w-9 h-9 rounded-full object-cover" />
                     <div>
                       <h3 className="font-medium text-gray-900">{`${selectedConversation.first_name} ${selectedConversation.last_name}`}</h3>
                       <p className="text-xs text-gray-500">Online</p> {/* Placeholder status */}

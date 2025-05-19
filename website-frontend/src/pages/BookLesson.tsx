@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 const BookLesson = () => {
+  const API_URL = import.meta.env.VITE_API_URL;
   const { id: tutorId } = useParams();
   const [availability, setAvailability] = useState([]);
   const [selectedStart, setSelectedStart] = useState(null);
@@ -83,7 +84,7 @@ const BookLesson = () => {
         setLoading(true);
         setError('');
         const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:8001/get-availability', {
+        const response = await fetch(`${API_URL}/get-availability`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -134,14 +135,13 @@ const BookLesson = () => {
     try {
       const token = localStorage.getItem('token');
       // 2. Proceed with booking
-      const response = await fetch(`http://localhost:8001/book-lesson/${tutorId}`, {
+      const response = await fetch(`${API_URL}/book-lesson/${tutorId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          student_id: 2,
           day_of_week: selectedStart.day,
           time_slot: selectedStart.slot,
           duration: selectedDuration,

@@ -6,7 +6,8 @@ function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
+  const API_URL = import.meta.env.VITE_API_URL;
+  console.log('API_URL:', API_URL);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -17,7 +18,7 @@ function Login() {
     formData.append('password', password);
 
     try {
-      const response = await fetch('http://localhost:8001/login', {
+      const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
