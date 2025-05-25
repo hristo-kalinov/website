@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 // Helper function for authenticated fetch requests
 const API_URL = import.meta.env.VITE_API_URL;
+const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL;
 const authenticatedFetch = async (url: string, options: RequestInit = {}, navigate: any) => {
   const token = localStorage.getItem('token');
   if (!token) {
@@ -12,7 +13,6 @@ const authenticatedFetch = async (url: string, options: RequestInit = {}, naviga
     navigate('/login');
     throw new Error('Authentication token not found.');
   }
-
   const defaultHeaders = {
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json',
@@ -163,7 +163,7 @@ function Messages() {
     const token = localStorage.getItem('token');
     if (!token) { redirectToLogin(); return; }
 
-    const wsUrl = `ws://localhost:8001/ws/${currentUser.id}?token=${token}`;
+    const wsUrl = `${WEBSOCKET_URL}/${currentUser.id}?token=${token}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (event) => {
@@ -291,7 +291,6 @@ function Messages() {
                     <img src={selectedConversation.image ? `${API_URL}${selectedConversation.image}` : `${API_URL}/default_pfp.webp`} alt={`${selectedConversation.first_name} ${selectedConversation.last_name}`} className="w-9 h-9 rounded-full object-cover" />
                     <div>
                       <h3 className="font-medium text-gray-900">{`${selectedConversation.first_name} ${selectedConversation.last_name}`}</h3>
-                      <p className="text-xs text-gray-500">Online</p> {/* Placeholder status */}
                     </div>
                   </div>
                   <div className="flex space-x-2">

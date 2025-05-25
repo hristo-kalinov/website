@@ -86,8 +86,9 @@ const AvailabilityGrid = () => {
 
   const handleMouseDown = (day: number, slotIndex: number, isLeftClick: boolean) => {
     isDragging.current = true;
-    currentAction.current = isLeftClick ? 'available' : 'unavailable';
-    handleMouseAction(day, slotIndex, isLeftClick);
+    const makeAvailable = isLeftClick ? !availability[day][slotIndex] : false;
+    currentAction.current = makeAvailable ? 'available' : 'unavailable';
+    handleMouseAction(day, slotIndex, makeAvailable);
   };
 
   const handleMouseEnter = (day: number, slotIndex: number) => {
@@ -178,7 +179,8 @@ const AvailabilityGrid = () => {
                 key={day}
                 className="h-10 flex items-center justify-center text-sm font-medium text-gray-600 bg-gray-50 rounded-t"
               >
-                {day}
+                <span className="hidden md:inline">{day}</span>
+                <span className="md:hidden">{day[0]}</span>
               </div>
             ))}
           </div>
@@ -221,9 +223,6 @@ const AvailabilityGrid = () => {
 
       {/* Save Button and Footer */}
       <div className="mt-4 flex justify-between items-center pl-[72px]">
-        <div className="text-sm text-gray-500">
-          Ляв бутон: маркиране като свободен • Десен бутон: маркиране като зает
-        </div>
         <button
           onClick={handleSave}
           className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"

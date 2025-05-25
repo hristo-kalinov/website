@@ -126,9 +126,6 @@ function TutorProfile() {
                 alt={tutor.name}
                 className="w-40 h-40 rounded-2xl object-cover shadow-lg"
               />
-              <div className="absolute -bottom-3 -right-3 bg-green-500 text-white px-3 py-1 rounded-full text-sm font-medium shadow-lg">
-                Онлайн
-              </div>
             </div>
 
             <div className="flex-1">

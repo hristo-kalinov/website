@@ -1,12 +1,12 @@
 # Deployment Configuration
-$PI_USER = "pi"
-$PI_HOST = "192.168.100.100"  # Your Pi's IP
+$PI_USER = "root"
+$PI_HOST = "49.12.32.80"
 $FRONTEND_BUILD_DIR = "./website-frontend/dist"
 $BACKEND_SOURCE_FILE = "./website-backend/main.py"
-$BACKEND_ENV_FILE = "./website-backend/.env"  # Added .env file transfer
-$PI_TEMP_DIR = "~/infizity_deploy"
+$BACKEND_ENV_FILE = "./website-backend/.env"
+$PI_TEMP_DIR = "/tmp/infizity_deploy"
 $PI_WWW_DIR = "/var/www/infizity"
-$PI_BACKEND_DIR = "~/website-backend"
+$PI_BACKEND_DIR = "/infizity/backend"
 
 # Function to update .env files for production
 function Set-ProductionEnv {
@@ -32,7 +32,6 @@ function Set-ProductionEnv {
 
 # Function to revert .env files to development
 function Set-DevelopmentEnv {
-    # Frontend .env
     $frontendEnvPath = "./website-frontend/.env"
     if (Test-Path $frontendEnvPath) {
         (Get-Content $frontendEnvPath) `
@@ -42,7 +41,6 @@ function Set-DevelopmentEnv {
         Set-Content $frontendEnvPath
     }
 
-    # Backend .env
     $backendEnvPath = "./website-backend/.env"
     if (Test-Path $backendEnvPath) {
         (Get-Content $backendEnvPath) `
@@ -67,30 +65,31 @@ if ($LASTEXITCODE -ne 0) {
 }
 Set-Location "../"
 
-# 3. Transfer frontend files (will prompt for password)
-Write-Host "Uploading frontend files to Pi..."
-scp -r "$FRONTEND_BUILD_DIR/*" "${PI_USER}@${PI_HOST}:${PI_TEMP_DIR}"
+# 3. Transfer frontend files
+Write-Host "Uploading frontend files to server..."
+ssh "$PI_USER@$PI_HOST" "mkdir -p $PI_TEMP_DIR"
+scp -r "$FRONTEND_BUILD_DIR/*" "${PI_USER}@${PI_HOST}:$PI_TEMP_DIR/"
 
-# 4. Transfer backend files (will prompt for password)
-Write-Host "Uploading backend files to Pi..."
-scp "$BACKEND_SOURCE_FILE" "${PI_USER}@${PI_HOST}:${PI_BACKEND_DIR}/"
-scp "$BACKEND_ENV_FILE" "${PI_USER}@${PI_HOST}:${PI_BACKEND_DIR}/"  # Added .env transfer
+# 4. Transfer backend files
+Write-Host "Uploading backend files to server..."
+scp "$BACKEND_SOURCE_FILE" "${PI_USER}@${PI_HOST}:$PI_BACKEND_DIR/"
+scp "$BACKEND_ENV_FILE" "${PI_USER}@${PI_HOST}:$PI_BACKEND_DIR/"
 
-# 5. Execute remote deployment commands (will prompt for password)
-Write-Host "Running deployment on Pi..."
+# 5. Execute remote deployment commands
+Write-Host "Running deployment on server..."
 $DEPLOY_COMMANDS = @"
-sudo rm -rf $PI_WWW_DIR/*
-sudo cp -r $PI_TEMP_DIR/* $PI_WWW_DIR/
-sudo chown -R www-data:www-data $PI_WWW_DIR
-sudo find $PI_WWW_DIR -type d -exec chmod 750 {} \;
-sudo find $PI_WWW_DIR -type f -exec chmod 640 {} \;
+rm -rf $PI_WWW_DIR/*
+cp -r $PI_TEMP_DIR/* $PI_WWW_DIR/
+chown -R www-data:www-data $PI_WWW_DIR
+find $PI_WWW_DIR -type d -exec chmod 750 {} \;
+find $PI_WWW_DIR -type f -exec chmod 640 {} \;
 rm -rf $PI_TEMP_DIR
-sudo systemctl restart infizity-api.service
+systemctl restart infizity-backend.service
 "@
 
-ssh "${PI_USER}@${PI_HOST}" "$DEPLOY_COMMANDS"
+ssh "$PI_USER@$PI_HOST" "$DEPLOY_COMMANDS"
 
-# 6. Revert environment variables to development
+# 6. Revert environment variables
 Write-Host "Reverting environment variables to development values..."
 Set-DevelopmentEnv
 

@@ -15,6 +15,7 @@ import SetAvailability from './pages/SetAvailability.tsx';
 import BookLesson from './pages/BookLesson.tsx';
 import Lessons from './pages/Lessons.tsx';
 import Verification from './pages/Verification.tsx';
+import UniStudentTutorOnboarding from './pages/UniStudentTutorOnboarding.tsx';
 function PublicNavBar() {
   return (
     <nav className="bg-white shadow-sm">
@@ -77,7 +78,12 @@ function App() {
             </>
           } />
           <Route path="/verification" element={<Verification/>}/>
-
+          <Route path="/tutor_onboarding1" element={
+            <>
+              <PublicNavBar />
+              <UniStudentTutorOnboarding />
+            </>
+          } />
           {/* Authenticated routes */}
           <Route element={<LayoutWrapper />}>
             <Route path="/dashboard" element={<Dashboard />} />

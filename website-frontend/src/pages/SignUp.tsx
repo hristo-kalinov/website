@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react'; // Import useEffect
 import { Link, useNavigate } from 'react-router-dom';
 import {
   GraduationCap,
@@ -31,6 +31,16 @@ const subjects = [
 ];
 
 const API_URL = import.meta.env.VITE_API_URL;
+
+// Helper function to send GA4 events
+const sendGAEvent = (eventName, params = {}) => {
+  if (window.gtag) {
+    window.gtag('event', eventName, params);
+  } else {
+    console.warn('Google Analytics gtag not loaded.');
+  }
+};
+
 function SignUp() {
   const navigate = useNavigate();
 
@@ -56,12 +66,35 @@ function SignUp() {
     );
   }, [subjectSearch]);
 
+  // Track initial page view for signup
+  useEffect(() => {
+    sendGAEvent('page_view', {
+      page_title: 'Signup Page',
+      page_location: window.location.href,
+      page_path: window.location.pathname,
+      signup_step: step, // Also send the current step
+    });
+    sendGAEvent('signup_start'); // Track when signup process is initiated
+  }, []); // Only run once on component mount
+
+  // Track when role is changed
+  useEffect(() => {
+    // Only send if the role has truly changed from its initial 'student' state
+    // or if the component re-renders with a different role.
+    // Avoids sending 'student_role_selected' immediately on page load.
+    if (role === 'student') {
+        sendGAEvent('role_selected', { user_role: 'student' });
+    } else if (role === 'teacher') {
+        sendGAEvent('role_selected', { user_role: 'teacher' });
+    }
+  }, [role]); // Runs when 'role' state changes
+
   // Common function to perform the actual registration fetch
   const doRegister = async () => {
     const first_name = name.split(' ')[0] || '';
     const last_name = name.split(' ').slice(1).join(' ') || '';
 
-    // Build up the data object. 
+    // Build up the data object.
     // If it's a teacher, include teacher-related fields too.
     const userData: any = {
       email,
@@ -94,11 +127,16 @@ function SignUp() {
 
       const result = await response.json();
       console.log('Success:', result);
+      sendGAEvent('signup_success', { user_role: role }); // Track successful registration
 
       // On success, go to login
       navigate('/login');
     } catch (error: any) {
       console.error('Error:', error);
+      sendGAEvent('signup_failure', {
+        user_role: role,
+        error_message: error.message,
+      }); // Track failed registration
       alert(error.message);
     }
   };
@@ -109,6 +147,7 @@ function SignUp() {
 
     if (password !== confirmPassword) {
       setPasswordError('Паролите не съвпадат');
+      sendGAEvent('signup_error', { error_type: 'password_mismatch' });
       return;
     }
     setPasswordError('');
@@ -117,12 +156,24 @@ function SignUp() {
       // If we are a teacher, go to step 2
       if (role === 'teacher') {
         setStep(2);
+        sendGAEvent('signup_step_completed', {
+          step_number: 1,
+          user_role: role,
+        }); // Track completion of step 1 for teachers
       } else {
         // If we are a student, register immediately
+        sendGAEvent('signup_step_completed', {
+          step_number: 1,
+          user_role: role,
+        }); // Track completion of step 1 for students (before final register)
         await doRegister();
       }
     } else if (step === 2) {
       // Final teacher registration
+      sendGAEvent('signup_step_completed', {
+        step_number: 2,
+        user_role: role,
+      }); // Track completion of step 2 for teachers
       await doRegister();
     }
   };
@@ -139,6 +190,7 @@ function SignUp() {
             <Link
               to="/login"
               className="font-medium text-blue-600 hover:text-purple-600 transition-colors duration-300"
+              onClick={() => sendGAEvent('login_link_clicked_from_signup')} // Track click on login link
             >
               Влезте
             </Link>
@@ -149,7 +201,10 @@ function SignUp() {
           <div className="flex justify-center space-x-4 mt-8">
             <button
               type="button"
-              onClick={() => setRole('student')}
+              onClick={() => {
+                setRole('student');
+                // Role selection is tracked via useEffect
+              }}
               className={`flex items-center px-6 py-3 rounded-xl border-2 transition-all duration-500 transform hover:scale-105 ${
                 role === 'student'
                   ? 'border-blue-600 bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700 scale-110 shadow-lg'
@@ -165,7 +220,10 @@ function SignUp() {
             </button>
             <button
               type="button"
-              onClick={() => setRole('teacher')}
+              onClick={() => {
+                setRole('teacher');
+                // Role selection is tracked via useEffect
+              }}
               className={`flex items-center px-6 py-3 rounded-xl border-2 transition-all duration-500 transform hover:scale-105 ${
                 role === 'teacher'
                   ? 'border-purple-600 bg-gradient-to-r from-purple-50 to-blue-50 text-purple-700 scale-110 shadow-lg'
@@ -320,6 +378,7 @@ function SignUp() {
                           setSelectedSubject(subject);
                           setSubjectSearch(subject);
                           setShowSubjects(false);
+                          sendGAEvent('subject_selected', { subject_name: subject }); // Track subject selection
                         }}
                         className="w-full px-4 py-2 text-left hover:bg-blue-50 transition-colors duration-200"
                       >
@@ -343,21 +402,6 @@ function SignUp() {
                   required
                 />
               </div>
-
-              <div className="transform transition-all duration-300 hover:scale-102">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Относно вашите уроци
-                </label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Опишете накратко как протичат вашите уроци..."
-                  className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
-                  rows={4}
-                  required
-                />
-              </div>
-
               <div className="transform transition-all duration-300 hover:scale-102">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Цена на урок (лв/час)

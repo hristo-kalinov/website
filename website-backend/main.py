@@ -90,7 +90,7 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = 360
 JITSI_DOMAIN = os.getenv("JITSI_URL")
 logger = logging.getLogger(__name__)
-VERIFICATION_LINK_BASE = os.getenv("API_URL")+"/verification"
+VERIFICATION_LINK_BASE = os.getenv("WEBSITE_URL")+"/verification"
 resend.api_key = "re_G2Vu17hG_Ek7xEERiZxXJ5QDhTBhRCt7E"
 # Pydantic models
 class UserLogin(BaseModel):
@@ -540,6 +540,8 @@ async def get_all_subjects():
         'Испански език',
         'Италиански език',
         'Руски език',
+        'Норвежки език',
+        'Китайски език',
         'Литература',
         'Философия',
         'Психология',
@@ -561,7 +563,7 @@ async def search_tutors(
 ):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    
+
     try:
         query = """
             SELECT 
@@ -573,41 +575,44 @@ async def search_tutors(
                 COALESCE(profile_picture_url, '/uploads/default_pfp.webp') as image,
                 COALESCE(profile_title, '') as description
             FROM users
-            WHERE is_active = TRUE AND user_type = 'tutor'
+            WHERE is_active = TRUE
+              AND user_type = 'tutor'
+              AND verification_status = 'verified'
         """
-        
+
         params = []
         conditions = []
-        
+
         if search_term:
             conditions.append("""
                 (CONCAT(first_name, ' ', last_name) LIKE %s 
                 OR subject LIKE %s)
             """)
             params.extend([f"%{search_term}%", f"%{search_term}%"])
-        
+
         if subject:
             conditions.append("subject = %s")
             params.append(subject)
-        
+
         if max_price:
             conditions.append("hourly_rate <= %s")
             params.append(max_price)
-        
+
         if conditions:
             query += " AND " + " AND ".join(conditions)
-        
+
         query += " ORDER BY hourly_rate ASC"
-        
+
         cursor.execute(query, params)
         tutors = cursor.fetchall()
         return tutors
-        
+
     except Error as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         cursor.close()
         conn.close()
+
 
 @app.get("/tutors/{public_id}", response_model=Tutor)
 async def get_tutor_details(
